@@ -3,6 +3,9 @@ import datetime
 import os
 import json
 from pathlib import Path
+import pandas as pd
+import modelx as mx
+import shutil
 
 def load_settings():
     """Load saved settings from a JSON file"""
@@ -19,6 +22,89 @@ def save_settings(settings):
     settings["valuation_date"] = settings["valuation_date"].isoformat()
     with open(settings_file, "w") as f:
         json.dump(settings, f, indent=4)
+
+def run_pricing_model(settings):
+    """
+    Run the pricing model using modelX lifelib with the provided settings
+    """
+    try:
+        # Create isolated workspace for this specific model run
+        work_dir = Path("work_dir")
+        work_dir.mkdir(exist_ok=True)
+        
+        # Copy files to working directory to:
+        # 1. Ensure file availability during processing
+        # 2. Prevent modifications to original files
+        # 3. Allow for file manipulation if needed
+        assumption_dest = work_dir / Path(settings["assumption_table"]).name
+        model_point_dest = work_dir / Path(settings["model_point_files"]).name
+        
+        shutil.copy2(settings["assumption_table"], assumption_dest)
+        shutil.copy2(settings["model_point_files"], model_point_dest)
+        
+        # Read input files
+        if assumption_dest.suffix == '.xlsx':
+            assumptions = {
+                'lapse_rate_table': pd.read_excel(assumption_dest, sheet_name='lapse'),
+                'inflation_rate_table': pd.read_excel(assumption_dest, sheet_name='CPI'),
+                'prem_exp_table': pd.read_excel(assumption_dest, sheet_name='prem expenses'),
+                'fixed_exp_table': pd.read_excel(assumption_dest, sheet_name='fixed expenses'),
+                'comm_table': pd.read_excel(assumption_dest, sheet_name='commissions'),
+                'disc_curve': pd.read_excel(assumption_dest, sheet_name='discount curve'),
+                'mort_table': pd.read_excel(assumption_dest, sheet_name='mortality')
+            }
+        else:
+            raise ValueError("Assumptions file must be an Excel file (.xlsx)")
+
+        # Read model points from separate Excel file
+        model_points_df = pd.read_excel(model_point_dest, sheet_name='Model Points') if model_point_dest.suffix == '.xlsx' \
+            else pd.read_csv(model_point_dest)
+        
+        # Initialize modelx model
+        model = mx.read_model("")
+        
+        # Configure model settings
+        model.proj_period = settings["projection_period"]
+        model.val_date = settings["valuation_date"]
+        
+        # Load assumptions and model points into the model
+        model.assumptions = assumptions_df
+        model.model_points = model_points_df
+        
+        results = {}
+        # Run model for each product group
+        for product in settings["product_groups"]:
+            model.product = product
+            
+            # Run the model calculations
+            projection = model.run()
+            
+            # Store results
+            results[product] = {
+                'present_value': projection.present_value(),
+                'cashflows': projection.cashflows(),
+                'metrics': projection.get_metrics()  # Assuming this method exists
+            }
+        
+        # Clean up
+        model.close()
+        
+        return {
+            'status': 'success',
+            'results': results,
+            'message': 'Model run completed successfully'
+        }
+        
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': f'Error running model: {str(e)}'
+        }
+    finally:
+        # Clean up: Remove all temporary files and the working directory
+        # This prevents accumulation of temporary files
+        if work_dir.exists():
+            shutil.rmtree(work_dir)
 
 def main():
     st.title("Enterprise Pricing Model Settings")
@@ -135,10 +221,27 @@ def main():
             
             if submitted:
                 st.success("Settings validated! Ready to run pricing model.")
-                st.json(run_settings)
                 
-                # TODO: Add your pricing model function call here
-                # run_pricing_model(run_settings)
+                # Run the pricing model
+                with st.spinner('Running pricing model...'):
+                    result = run_pricing_model(run_settings)
+                    
+                    if result['status'] == 'success':
+                        st.success("Model run completed successfully!")
+                        
+                        # Display results
+                        st.subheader("Model Results")
+                        for product, product_results in result['results'].items():
+                            with st.expander(f"{product} Results"):
+                                st.write("Present Value:", product_results['present_value'])
+                                
+                                st.write("Cashflows:")
+                                st.dataframe(product_results['cashflows'])
+                                
+                                st.write("Key Metrics:")
+                                st.json(product_results['metrics'])
+                    else:
+                        st.error(result['message'])
 
 if __name__ == "__main__":
     # Create uploads directory if it doesn't exist
