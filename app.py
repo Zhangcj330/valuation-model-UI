@@ -7,6 +7,7 @@ import pandas as pd
 import modelx as mx
 import shutil
 
+
 def load_settings():
     """Load saved settings from a JSON file"""
     settings_file = Path("saved_settings.json")
@@ -57,38 +58,36 @@ def run_pricing_model(settings):
             raise ValueError("Assumptions file must be an Excel file (.xlsx)")
 
         # Read model points from separate Excel file
-        model_points_df = pd.read_excel(model_point_dest, sheet_name='Model Points') if model_point_dest.suffix == '.xlsx' \
+        model_points_df = pd.read_excel(model_point_dest, sheet_name='MPF') if model_point_dest.suffix == '.xlsx' \
             else pd.read_csv(model_point_dest)
         
         # Initialize modelx model
-        model = mx.read_model("")
+        model = mx.read_model("Basic_Term_Model_v1")
         
         # Configure model settings
-        model.proj_period = settings["projection_period"]
-        model.val_date = settings["valuation_date"]
+        model.Data_Inputs.proj_period = settings["projection_period"]
+        model.Data_Inputs.val_date = settings["valuation_date"]
         
         # Load assumptions and model points into the model
-        model.assumptions = assumptions_df
-        model.model_points = model_points_df
+        model.Data_Inputs.lapse_rate_table = assumptions['lapse_rate_table']
+        model.Data_Inputs.inflation_rate_table = assumptions['inflation_rate_table']
+        model.Data_Inputs.prem_exp_table = assumptions['prem_exp_table']
+        model.Data_Inputs.fixed_exp_table = assumptions['fixed_exp_table']
+        model.Data_Inputs.comm_table = assumptions['comm_table']
+        model.Data_Inputs.disc_curve = assumptions['disc_curve']
+        model.Data_Inputs.mort_table = assumptions['mort_table']
+        model.Data_Inputs.model_point_table = model_points_df
         
         results = {}
-        # Run model for each product group
-        for product in settings["product_groups"]:
-            model.product = product
-            
-            # Run the model calculations
-            projection = model.run()
-            
-            # Store results
-            results[product] = {
-                'present_value': projection.present_value(),
-                'cashflows': projection.cashflows(),
-                'metrics': projection.get_metrics()  # Assuming this method exists
+        # To do: Run model for each product group
+
+        
+        results = {
+                'present_value': model.Results_at_t.aggregate_pvs(),
+                'cashflows': model.Results_at_t.aggregate_cfs(),
+                'analytic': model.Results_at_t.analytic() 
             }
-        
-        # Clean up
-        model.close()
-        
+     
         return {
             'status': 'success',
             'results': results,
@@ -146,7 +145,9 @@ def main():
         )
         if assumption_upload:
             assumption_table = os.path.join("uploads", assumption_upload.name)
-            
+            with open(assumption_table, "wb") as f:
+                f.write(assumption_upload.getbuffer())
+                    
         # Model Point Files
         st.markdown("##### Model Point Files Location")
     
@@ -158,7 +159,9 @@ def main():
         )
         if model_point_upload:
             model_point_files = os.path.join("uploads", model_point_upload[0].name)
- 
+            with open(model_point_files, "wb") as f:
+                f.write(model_point_upload[0].getbuffer())
+
         # Projection Period
         projection_period = st.number_input(
             "Projection Period (Years)",
@@ -195,12 +198,12 @@ def main():
                 st.error("Please select at least one product group")
                 return
                 
-            if not all([assumption_table, model_point_files, output_location]):
+            if not all([assumption_table, model_point_files]):
                 st.error("Please fill in all file locations")
                 return
                 
             # Validate paths
-            for path in [assumption_table, model_point_files, output_location]:
+            for path in [assumption_table, model_point_files]:
                 if not os.path.exists(path):
                     st.error(f"Path does not exist: {path}")
                     return
@@ -210,7 +213,6 @@ def main():
                 "valuation_date": val_date,
                 "assumption_table": assumption_table,
                 "model_point_files": model_point_files,
-                "output_location": output_location,
                 "projection_period": projection_period,
                 "product_groups": product_groups
             }
@@ -231,15 +233,12 @@ def main():
                         
                         # Display results
                         st.subheader("Model Results")
-                        for product, product_results in result['results'].items():
-                            with st.expander(f"{product} Results"):
-                                st.write("Present Value:", product_results['present_value'])
-                                
-                                st.write("Cashflows:")
-                                st.dataframe(product_results['cashflows'])
-                                
-                                st.write("Key Metrics:")
-                                st.json(product_results['metrics'])
+                        with st.expander(f"Results"):
+                            st.write("Present Value:", result['results']['present_value'])
+                            
+                            st.write("Cashflows:")
+                            st.dataframe(result['results']['cashflows'])
+
                     else:
                         st.error(result['message'])
 

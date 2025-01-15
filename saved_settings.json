@@ -1,0 +1,9 @@
+{
+    "valuation_date": "2025-01-15",
+    "assumption_table": "uploads\\Assumptions.xlsx",
+    "model_point_files": "uploads\\Model Points.xlsx",
+    "projection_period": 20,
+    "product_groups": [
+        "Term Life"
+    ]
+}
