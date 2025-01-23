@@ -7,6 +7,9 @@ import pandas as pd
 import modelx as mx
 import shutil
 
+import boto3
+import io
+from urllib.parse import urlparse
 
 def load_settings():
     """Load saved settings from a JSON file"""
@@ -24,42 +27,50 @@ def save_settings(settings):
     with open(settings_file, "w") as f:
         json.dump(settings, f, indent=4)
 
+def download_from_s3(s3_url):
+    """
+    Download file from S3 URL and return as a file-like object
+    """
+    try:
+        # Parse S3 URL
+        parsed_url = urlparse(s3_url)
+        bucket_name = parsed_url.netloc
+        key = parsed_url.path.lstrip('/')
+        
+        # Initialize S3 client
+        s3_client = boto3.client('s3')
+        
+        # Download file to memory
+        file_obj = io.BytesIO()
+        s3_client.download_fileobj(bucket_name, key, file_obj)
+        file_obj.seek(0)
+        
+        return file_obj
+    except Exception as e:
+        raise Exception(f"Error downloading from S3: {str(e)}")
+
 def run_pricing_model(settings):
     """
     Run the pricing model using modelX lifelib with the provided settings
     """
     try:
-        # Create isolated workspace for this specific model run
-        work_dir = Path("work_dir")
-        work_dir.mkdir(exist_ok=True)
+        # Download files from S3 directly to memory
+        assumption_file = download_from_s3(settings["assumption_table_url"])
+        model_point_file = download_from_s3(settings["model_point_files_url"])
         
-        # Copy files to working directory to:
-        # 1. Ensure file availability during processing
-        # 2. Prevent modifications to original files
-        # 3. Allow for file manipulation if needed
-        assumption_dest = work_dir / Path(settings["assumption_table"]).name
-        model_point_dest = work_dir / Path(settings["model_point_files"]).name
-        
-        shutil.copy2(settings["assumption_table"], assumption_dest)
-        shutil.copy2(settings["model_point_files"], model_point_dest)
-        
-        # Read input files
-        if assumption_dest.suffix == '.xlsx':
-            assumptions = {
-                'lapse_rate_table': pd.read_excel(assumption_dest, sheet_name='lapse'),
-                'inflation_rate_table': pd.read_excel(assumption_dest, sheet_name='CPI'),
-                'prem_exp_table': pd.read_excel(assumption_dest, sheet_name='prem expenses'),
-                'fixed_exp_table': pd.read_excel(assumption_dest, sheet_name='fixed expenses'),
-                'comm_table': pd.read_excel(assumption_dest, sheet_name='commissions'),
-                'disc_curve': pd.read_excel(assumption_dest, sheet_name='discount curve'),
-                'mort_table': pd.read_excel(assumption_dest, sheet_name='mortality')
-            }
-        else:
-            raise ValueError("Assumptions file must be an Excel file (.xlsx)")
+        # Read input files directly from memory
+        assumptions = {
+            'lapse_rate_table': pd.read_excel(assumption_file, sheet_name='lapse'),
+            'inflation_rate_table': pd.read_excel(assumption_file, sheet_name='CPI'),
+            'prem_exp_table': pd.read_excel(assumption_file, sheet_name='prem expenses'),
+            'fixed_exp_table': pd.read_excel(assumption_file, sheet_name='fixed expenses'),
+            'comm_table': pd.read_excel(assumption_file, sheet_name='commissions'),
+            'disc_curve': pd.read_excel(assumption_file, sheet_name='discount curve'),
+            'mort_table': pd.read_excel(assumption_file, sheet_name='mortality')
+        }
 
-        # Read model points from separate Excel file
-        model_points_df = pd.read_excel(model_point_dest, sheet_name='MPF') if model_point_dest.suffix == '.xlsx' \
-            else pd.read_csv(model_point_dest)
+        # Read model points directly from memory
+        model_points_df = pd.read_excel(model_point_file, sheet_name='Model Points')
         
         # Initialize modelx model
         model = mx.read_model("Basic_Term_Model_v1")
@@ -69,23 +80,22 @@ def run_pricing_model(settings):
         model.Data_Inputs.val_date = settings["valuation_date"]
         
         # Load assumptions and model points into the model
-        model.Data_Inputs.lapse_rate_table = assumptions['lapse_rate_table']
-        model.Data_Inputs.inflation_rate_table = assumptions['inflation_rate_table']
-        model.Data_Inputs.prem_exp_table = assumptions['prem_exp_table']
-        model.Data_Inputs.fixed_exp_table = assumptions['fixed_exp_table']
-        model.Data_Inputs.comm_table = assumptions['comm_table']
-        model.Data_Inputs.disc_curve = assumptions['disc_curve']
-        model.Data_Inputs.mort_table = assumptions['mort_table']
-        model.Data_Inputs.model_point_table = model_points_df
+        model.assumptions = assumptions
+        model.model_points = model_points_df
         
         results = {}
-        # To do: Run model for each product group
-
-        
-        results = {
-                'present_value': model.Results_at_t.aggregate_pvs(),
-                'cashflows': model.Results_at_t.aggregate_cfs(),
-                'analytic': model.Results_at_t.analytic() 
+        # Run model for each product group
+        for product in settings["product_groups"]:
+            model.product = product
+            
+            # Run the model calculations
+            projection = model.run()
+            
+            # Store results
+            results[product] = {
+                'present_value': projection.present_value(),
+                'cashflows': projection.cashflows(),
+                'metrics': projection.get_metrics()
             }
      
         return {
@@ -99,11 +109,6 @@ def run_pricing_model(settings):
             'status': 'error',
             'message': f'Error running model: {str(e)}'
         }
-    finally:
-        # Clean up: Remove all temporary files and the working directory
-        # This prevents accumulation of temporary files
-        if work_dir.exists():
-            shutil.rmtree(work_dir)
 
 def main():
     st.title("Enterprise Pricing Model Settings")
@@ -132,36 +137,25 @@ def main():
             help="Select the valuation date for the pricing model"
         )
         
-        # File/Directory Selection using file uploader
-        st.subheader("File Locations")
+        # Replace file uploaders with URL inputs
+        st.subheader("S3 File Locations")
         
-        # Assumption Table
-        st.markdown("##### Assumption Table Location")
+        # Assumption Table URL
+        st.markdown("##### Assumption Table S3 URL")
+        assumption_table_url = st.text_input(
+            "Enter S3 URL for assumption table",
+            value=saved_settings.get("assumption_table_url", "") if saved_settings else "",
+            help="Format: s3://bucket-name/path/to/file.xlsx"
+        )
         
-        assumption_upload = st.file_uploader(
-            "Upload assumption table",
-            type=["xlsx", "csv"],
-            key="assumption_upload"
+        # Model Point Files URL
+        st.markdown("##### Model Point Files S3 URL")
+        model_point_files_url = st.text_input(
+            "Enter S3 URL for model point files",
+            value=saved_settings.get("model_point_files_url", "") if saved_settings else "",
+            help="Format: s3://bucket-name/path/to/file.xlsx"
         )
-        if assumption_upload:
-            assumption_table = os.path.join("uploads", assumption_upload.name)
-            with open(assumption_table, "wb") as f:
-                f.write(assumption_upload.getbuffer())
-                    
-        # Model Point Files
-        st.markdown("##### Model Point Files Location")
-    
-        model_point_upload = st.file_uploader(
-            "Upload model point files",
-            type=["xlsx", "csv"],
-            accept_multiple_files=True,
-            key="model_point_upload"
-        )
-        if model_point_upload:
-            model_point_files = os.path.join("uploads", model_point_upload[0].name)
-            with open(model_point_files, "wb") as f:
-                f.write(model_point_upload[0].getbuffer())
-
+        
         # Projection Period
         projection_period = st.number_input(
             "Projection Period (Years)",
@@ -198,21 +192,21 @@ def main():
                 st.error("Please select at least one product group")
                 return
                 
-            if not all([assumption_table, model_point_files]):
-                st.error("Please fill in all file locations")
+            if not all([assumption_table_url, model_point_files_url]):
+                st.error("Please provide all S3 URLs")
                 return
                 
-            # Validate paths
-            for path in [assumption_table, model_point_files]:
-                if not os.path.exists(path):
-                    st.error(f"Path does not exist: {path}")
+            # Validate S3 URLs
+            for url in [assumption_table_url, model_point_files_url]:
+                if not url.startswith('s3://'):
+                    st.error(f"Invalid S3 URL format: {url}")
                     return
             
             # Collect settings
             run_settings = {
                 "valuation_date": val_date,
-                "assumption_table": assumption_table,
-                "model_point_files": model_point_files,
+                "assumption_table_url": assumption_table_url,
+                "model_point_files_url": model_point_files_url,
                 "projection_period": projection_period,
                 "product_groups": product_groups
             }
@@ -243,7 +237,4 @@ def main():
                         st.error(result['message'])
 
 if __name__ == "__main__":
-    # Create uploads directory if it doesn't exist
-    if not os.path.exists("uploads"):
-        os.makedirs("uploads")
     main()
