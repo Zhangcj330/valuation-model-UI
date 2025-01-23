@@ -213,11 +213,69 @@ def process_model_run(settings):
     """Process the model run and display results"""
     st.success("Settings validated! Ready to run pricing model.")
     
+    # Initialize progress bar
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    time_text = st.empty()
+    
+    start_time = datetime.datetime.now()
+    
     with st.spinner('Running pricing model...'):
-        result = run_pricing_model(settings)
+        # Estimate total steps based on number of product groups
+        total_steps = len(settings["product_groups"])
+        result = {'status': 'error', 'message': '', 'results': {}}
+        
+        try:
+            # Download and process input files
+            status_text.text("Downloading and processing input files...")
+            assumptions = load_assumptions(settings["assumption_table_url"])
+            model_points_df = load_model_points(settings["model_point_files_url"])
+            
+            # Initialize and configure model
+            status_text.text("Initializing model...")
+            model = initialize_model(settings, assumptions, model_points_df)
+            
+            # Run model for each product group
+            results = {}
+            for idx, product in enumerate(settings["product_groups"], 1):
+                current_time = datetime.datetime.now()
+                elapsed_time = (current_time - start_time).total_seconds()
+                avg_time_per_step = elapsed_time / idx if idx > 0 else 0
+                remaining_steps = total_steps - idx
+                estimated_remaining_time = avg_time_per_step * remaining_steps
+                
+                status_text.text(f"Processing {product}... ({idx}/{total_steps})")
+                time_text.text(f"Estimated time remaining: {estimated_remaining_time:.1f} seconds")
+                progress_bar.progress(idx / total_steps)
+                
+                model.product = product
+                results[product] = {
+                    'present_value': model.Results_at_t.aggregate_pvs(),
+                    'cashflows': model.Results_at_t.aggregate_cfs(),
+                    'analytic': model.Results_at_t.analytic() 
+                }
+            
+            result = {
+                'status': 'success',
+                'results': results,
+                'message': 'Model run completed successfully'
+            }
+            
+        except Exception as e:
+            result = {
+                'status': 'error',
+                'message': f'Error running model: {str(e)}'
+            }
+        
+        # Clear progress indicators
+        progress_bar.empty()
+        status_text.empty()
+        time_text.empty()
         
         if result['status'] == 'success':
-            st.success("Model run completed successfully!")
+            end_time = datetime.datetime.now()
+            total_time = (end_time - start_time).total_seconds()
+            st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
             
             # Display results
             st.subheader("Model Results")
