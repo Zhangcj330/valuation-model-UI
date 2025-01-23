@@ -1,1 +1,5 @@
 modelx
+boto3
+streamlit
+pandas
+numpy

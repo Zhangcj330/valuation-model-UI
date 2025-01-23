@@ -221,39 +221,49 @@ def process_model_run(settings):
     start_time = datetime.datetime.now()
     
     with st.spinner('Running pricing model...'):
-        # Estimate total steps based on number of product groups
-        total_steps = len(settings["product_groups"])
+        # Calculate total steps (3 steps per product: load data, initialize, calculate)
+        steps_per_product = 3
+        total_steps = len(settings["product_groups"]) * steps_per_product
+        current_step = 0
         result = {'status': 'error', 'message': '', 'results': {}}
         
         try:
-            # Download and process input files
+            # Step 1: Download and process input files
             status_text.text("Downloading and processing input files...")
             assumptions = load_assumptions(settings["assumption_table_url"])
             model_points_df = load_model_points(settings["model_point_files_url"])
+            current_step += 1
+            progress_bar.progress(current_step / total_steps)
             
-            # Initialize and configure model
+            # Step 2: Initialize model
             status_text.text("Initializing model...")
             model = initialize_model(settings, assumptions, model_points_df)
+            current_step += 1
+            progress_bar.progress(current_step / total_steps)
             
             # Run model for each product group
             results = {}
-            for idx, product in enumerate(settings["product_groups"], 1):
+            for product_idx, product in enumerate(settings["product_groups"], 1):
                 current_time = datetime.datetime.now()
                 elapsed_time = (current_time - start_time).total_seconds()
-                avg_time_per_step = elapsed_time / idx if idx > 0 else 0
-                remaining_steps = total_steps - idx
+                
+                # Calculate average time per step using completed steps
+                avg_time_per_step = elapsed_time / current_step if current_step > 0 else 0
+                remaining_steps = total_steps - current_step
                 estimated_remaining_time = avg_time_per_step * remaining_steps
                 
-                status_text.text(f"Processing {product}... ({idx}/{total_steps})")
+                status_text.text(f"Processing {product}... ({product_idx}/{len(settings['product_groups'])})")
                 time_text.text(f"Estimated time remaining: {estimated_remaining_time:.1f} seconds")
-                progress_bar.progress(idx / total_steps)
                 
+                # Step 3: Calculate results for current product
                 model.product = product
                 results[product] = {
                     'present_value': model.Results_at_t.aggregate_pvs(),
                     'cashflows': model.Results_at_t.aggregate_cfs(),
                     'analytic': model.Results_at_t.analytic() 
                 }
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
             
             result = {
                 'status': 'success',
@@ -288,7 +298,7 @@ def process_model_run(settings):
                     st.write(product_results['analytic'])
         else:
             st.error(result['message'])
-
+            
 def get_aws_credentials():
     """
     Get AWS credentials from .env file
