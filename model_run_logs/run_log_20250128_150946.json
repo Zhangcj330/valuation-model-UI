@@ -1,0 +1,21 @@
+{
+    "run_timestamp": "2025-01-28T15:09:46.959556",
+    "user": "tianying",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run1/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run1/Model Points.xlsx",
+        "valuation_date": "2025-01-15",
+        "projection_period": 20,
+        "product_groups": [
+            "Term Life"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-01-28T15:09:46.959556",
+        "end_time": "2025-01-28T15:09:48.313020",
+        "duration_seconds": 1.353464,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "Invalid file path or buffer object type: <class 'list'>"
+}

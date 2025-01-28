@@ -11,6 +11,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def get_s3_client():
+    """
+    Get an authenticated S3 client using credentials from .env
+    
+    Returns:
+        boto3.client: Authenticated S3 client
+    """
+    aws_access_key, aws_secret_key = get_aws_credentials()
+    if not aws_access_key or not aws_secret_key:
+        raise Exception("AWS credentials not found in .env file")
+    
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        region_name=os.getenv('AWS_REGION', 'ap-southeast-1')
+    )
+    
+    return s3_client 
+
 def get_aws_credentials():
     """
     Get AWS credentials from .env file
@@ -235,4 +255,43 @@ def download_and_validate_excel_files(s3_path):
         list: List of validated DataFrame objects from Excel files
     """
     downloaded_files = download_excel_files_from_s3(s3_path)
-    return validate_excel_files(downloaded_files) 
+    return validate_excel_files(downloaded_files)
+
+def upload_to_s3(content, s3_url):
+    """
+    Upload content to S3
+    
+    Args:
+        content (str): The content to upload (e.g., JSON string)
+        s3_url (str): The S3 URL in format s3://bucket-name/path/to/file
+        
+    Returns:
+        str: The S3 URL where the content was uploaded
+    """
+    try:
+        # Parse bucket and key from s3_url
+        if not s3_url.startswith('s3://'):
+            raise ValueError("S3 URL must start with 's3://'")
+        
+        path_parts = s3_url[5:].split('/', 1)
+        if len(path_parts) != 2:
+            raise ValueError("Invalid S3 URL format")
+        
+        bucket = path_parts[0]
+        key = path_parts[1]
+        
+        # Convert string content to bytes
+        content_bytes = content.encode('utf-8')
+        
+        # Upload to S3
+        s3_client = get_s3_client()
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=content_bytes
+        )
+        
+        return s3_url
+        
+    except Exception as e:
+        raise Exception(f"Failed to upload to S3: {str(e)}") 
