@@ -5,6 +5,11 @@ import os
 from dotenv import load_dotenv
 import streamlit as st
 from botocore.exceptions import ClientError
+import tempfile
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_aws_credentials():
     """
@@ -70,4 +75,79 @@ def download_from_s3(s3_url):
         return file_obj
         
     except Exception as e:
-        raise Exception(f"Error downloading from S3: {str(e)}") 
+        raise Exception(f"Error downloading from S3: {str(e)}")
+
+def download_and_validate_excel_files(s3_path):
+    """
+    Download and validate all Excel files from specified S3 path
+    
+    Args:
+        s3_path (str): S3 path in format 's3://bucket-name/prefix/'
+    
+    Returns:
+        list: List of validated DataFrame objects from Excel files
+    """
+    try:
+        # Parse bucket and prefix from s3_path
+        bucket_name = s3_path.split('/')[2]
+        prefix = '/'.join(s3_path.split('/')[3:])
+        
+        # Initialize S3 client
+        s3_client = boto3.client('s3')
+        
+        # List all objects in the specified path
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=prefix
+        )
+        
+        if 'Contents' not in response:
+            raise ValueError(f"No files found in {s3_path}")
+            
+        excel_files = []
+        validated_dfs = []
+        
+        # Filter for .xlsx files
+        for obj in response['Contents']:
+            if obj['Key'].endswith('.xlsx'):
+                excel_files.append(obj['Key'])
+        
+        if not excel_files:
+            raise ValueError(f"No Excel files found in {s3_path}")
+            
+        # Download and validate each Excel file
+        for file_key in excel_files:
+            # Create a temporary file to store the downloaded Excel
+            with tempfile.NamedTemporaryFile(suffix='.xlsx') as temp_file:
+                s3_client.download_file(bucket_name, file_key, temp_file.name)
+                
+                # Read Excel file
+                try:
+                    df = pd.read_excel(temp_file.name)
+                    
+                    # Validate Excel structure
+                    required_columns = ['PolicyID', 'Age', 'Gender', 'Term']  # Add your required columns
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        logger.warning(f"File {file_key} missing required columns: {missing_columns}")
+                        continue
+                    
+                    # Additional validation checks can be added here
+                    # For example, check data types, value ranges, etc.
+                    
+                    validated_dfs.append(df)
+                    logger.info(f"Successfully validated file: {file_key}")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing file {file_key}: {str(e)}")
+                    continue
+        
+        if not validated_dfs:
+            raise ValueError("No valid Excel files found after validation")
+            
+        return validated_dfs
+        
+    except Exception as e:
+        logger.error(f"Error in download_and_validate_excel_files: {str(e)}")
+        raise 

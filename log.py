@@ -83,23 +83,39 @@ class ModelLogger:
                 return
 
             for log_entry in history:
-                with st.container():
-                    # Use smaller text and more compact layout for sidebar
-                    st.markdown(f"**{log_entry['run_timestamp']}**")
-                    status_color = "🟢" if log_entry['execution_details']['status'] == 'success' else "🔴"
+                try:
+                    # Parse ISO format timestamp
+                    timestamp = datetime.datetime.fromisoformat(log_entry['run_timestamp'].replace('Z', '+00:00'))
+                    date_str = timestamp.strftime("%b %d, %Y")
+                    time_str = timestamp.strftime("%I:%M %p")
+                except:
+                    date_str = "Unknown Date"
+                    time_str = "Unknown Time"
+                
+                # Status emoji
+                status_color = "🟢" if log_entry['execution_details']['status'] == 'success' else "🔴"
+                
+                # Display header with date and status
+            
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.write(f"🕒 {date_str} {time_str}")
+                    st.write(f"👤 {log_entry.get('user', 'unknown_user')}")
+                with col2:
                     st.write(f"{status_color} {log_entry['execution_details']['status']}")
+                
+                with st.expander("View Details"):
+                    st.write("**Duration:** ⏱️ " + log_entry.get('duration', 'N/A'))
+                    st.write("**Settings:**")
+                    st.json(log_entry['inputs'])
                     
-                    with st.expander("View Details"):
-                        st.write("**Settings:**")
-                        st.json(log_entry['inputs'])
-                        
-                        if log_entry.get('output_location'):
-                            st.write(f"**Output:** {log_entry['output_location']}")
-                        
-                        if log_entry.get('error_message'):
-                            st.error(f"Error: {log_entry['error_message']}")
+                    if log_entry.get('output_location'):
+                        st.write(f"**Output:** 📁 {log_entry['output_location']}")
                     
-                    st.markdown("---")  # Separator between entries
+                    if log_entry.get('error_message'):
+                        st.error(f"Error: {log_entry['error_message']}")
+                
+                st.markdown("<hr style='margin: 10px 0px'>", unsafe_allow_html=True)
     
     def clear_old_logs(self, days_to_keep=30):
         """Clear logs older than specified days"""
