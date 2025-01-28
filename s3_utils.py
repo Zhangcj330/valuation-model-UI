@@ -77,6 +77,153 @@ def download_from_s3(s3_url):
     except Exception as e:
         raise Exception(f"Error downloading from S3: {str(e)}")
 
+def download_excel_files_from_s3(s3_path):
+    """
+    Download all Excel files from specified S3 path
+    
+    Args:
+        s3_path (str): S3 path in format 's3://bucket-name/prefix/'
+    
+    Returns:
+        list: List of tuples containing (file_key, temp_file_path) for each Excel file
+    """
+    try:
+        bucket_name = s3_path.split('/')[2]
+        prefix = '/'.join(s3_path.split('/')[3:])
+        
+        s3_client = boto3.client('s3')
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=prefix
+        )
+        
+        if 'Contents' not in response:
+            raise ValueError(f"No files found in {s3_path}")
+            
+        excel_files = []
+        downloaded_files = []
+        
+        # Filter for .xlsx files
+        for obj in response['Contents']:
+            if obj['Key'].endswith('.xlsx'):
+                excel_files.append(obj['Key'])
+        
+        if not excel_files:
+            raise ValueError(f"No Excel files found in {s3_path}")
+            
+        # Download each Excel file
+        for file_key in excel_files:
+            temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+            s3_client.download_file(bucket_name, file_key, temp_file.name)
+            downloaded_files.append((file_key, temp_file.name))
+            
+        return downloaded_files
+        
+    except Exception as e:
+        logger.error(f"Error in download_excel_files_from_s3: {str(e)}")
+        raise
+
+def get_standardized_column_name(columns, possible_names):
+    """
+    Find a matching column name from a list of possible variations
+    
+    Args:
+        columns (list): List of actual column names in the DataFrame
+        possible_names (list): List of possible variations of the column name
+    
+    Returns:
+        str: Matching column name if found, None otherwise
+    """
+    # Convert all names to lowercase for case-insensitive comparison
+    columns_lower = [col.lower().replace(' ', '_') for col in columns]
+    for col, original_col in zip(columns_lower, columns):
+        for possible_name in possible_names:
+            if possible_name.lower() in col:
+                return original_col
+    return None
+
+def validate_excel_files(file_paths):
+    """
+    Validate downloaded Excel files with flexible column name matching
+    
+    Args:
+        file_paths (list): List of tuples containing (file_key, temp_file_path)
+    
+    Returns:
+        list: List of validated DataFrame objects from Excel files
+    """
+    try:
+        validated_dfs = []
+        
+        # Define column name variations
+        required_column_variations = {
+            'Policy number': [
+                'policy', 'policyid', 'policy_id', 'policy_number', 
+                'policy_no', 'policy_num', 'p_number', 'p_id', 'id'
+            ],
+            'age_at_entry': [
+                'age', 'member_age', 'client_age', 'age_at_entry'
+            ],
+            'sex': [
+                'gender', 'sex', 'member_gender', 'client_gender'
+            ],
+            'policy_term': [
+                'term', 'policy_term', 'coverage_term', 'duration'
+            ]
+        }
+        
+        for file_key, temp_file_path in file_paths:
+            try:
+                df = pd.read_excel(temp_file_path)
+                
+                # Dictionary to store matched column names
+                column_mapping = {}
+                missing_columns = []
+                
+                # Check for each required column
+                for std_name, variations in required_column_variations.items():
+                    matched_col = get_standardized_column_name(df.columns, variations)
+                    if matched_col:
+                        column_mapping[std_name] = matched_col
+                    else:
+                        missing_columns.append(std_name)
+                
+                if missing_columns:
+                    logger.warning(
+                        f"File {file_key} missing required columns: {missing_columns}\n"
+                        f"Available columns: {list(df.columns)}"
+                    )
+                    continue
+                
+                # Rename columns to standardized names
+                df_standardized = df.rename(columns={v: k for k, v in column_mapping.items()})
+                
+                # Additional validation checks can be added here
+                
+                validated_dfs.append(df_standardized)
+                logger.info(f"Successfully validated file: {file_key}")
+                logger.info(f"Column mapping used: {column_mapping}")
+                
+            except Exception as e:
+                logger.error(f"Error processing file {file_key}: {str(e)}")
+                continue
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_file_path)
+                except Exception as e:
+                    logger.warning(f"Error deleting temporary file {temp_file_path}: {str(e)}")
+        
+        if not validated_dfs:
+            raise ValueError("No valid Excel files found after validation")
+            
+        return validated_dfs
+        
+    except Exception as e:
+        logger.error(f"Error in validate_excel_files: {str(e)}")
+        raise
+
+
 def download_and_validate_excel_files(s3_path):
     """
     Download and validate all Excel files from specified S3 path
@@ -87,67 +234,5 @@ def download_and_validate_excel_files(s3_path):
     Returns:
         list: List of validated DataFrame objects from Excel files
     """
-    try:
-        # Parse bucket and prefix from s3_path
-        bucket_name = s3_path.split('/')[2]
-        prefix = '/'.join(s3_path.split('/')[3:])
-        
-        # Initialize S3 client
-        s3_client = boto3.client('s3')
-        
-        # List all objects in the specified path
-        response = s3_client.list_objects_v2(
-            Bucket=bucket_name,
-            Prefix=prefix
-        )
-        
-        if 'Contents' not in response:
-            raise ValueError(f"No files found in {s3_path}")
-            
-        excel_files = []
-        validated_dfs = []
-        
-        # Filter for .xlsx files
-        for obj in response['Contents']:
-            if obj['Key'].endswith('.xlsx'):
-                excel_files.append(obj['Key'])
-        
-        if not excel_files:
-            raise ValueError(f"No Excel files found in {s3_path}")
-            
-        # Download and validate each Excel file
-        for file_key in excel_files:
-            # Create a temporary file to store the downloaded Excel
-            with tempfile.NamedTemporaryFile(suffix='.xlsx') as temp_file:
-                s3_client.download_file(bucket_name, file_key, temp_file.name)
-                
-                # Read Excel file
-                try:
-                    df = pd.read_excel(temp_file.name)
-                    
-                    # Validate Excel structure
-                    required_columns = ['PolicyID', 'Age', 'Gender', 'Term']  # Add your required columns
-                    missing_columns = [col for col in required_columns if col not in df.columns]
-                    
-                    if missing_columns:
-                        logger.warning(f"File {file_key} missing required columns: {missing_columns}")
-                        continue
-                    
-                    # Additional validation checks can be added here
-                    # For example, check data types, value ranges, etc.
-                    
-                    validated_dfs.append(df)
-                    logger.info(f"Successfully validated file: {file_key}")
-                    
-                except Exception as e:
-                    logger.error(f"Error processing file {file_key}: {str(e)}")
-                    continue
-        
-        if not validated_dfs:
-            raise ValueError("No valid Excel files found after validation")
-            
-        return validated_dfs
-        
-    except Exception as e:
-        logger.error(f"Error in download_and_validate_excel_files: {str(e)}")
-        raise 
+    downloaded_files = download_excel_files_from_s3(s3_path)
+    return validate_excel_files(downloaded_files) 

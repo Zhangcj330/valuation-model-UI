@@ -26,16 +26,16 @@ def mock_s3_bucket():
         
         # Create valid Excel file
         valid_df = pd.DataFrame({
-            'PolicyID': ['P001', 'P002'],
-            'Age': [30, 40],
-            'Gender': ['M', 'F'],
-            'Term': [10, 20]
+            'Policy number': ['P001', 'P002'],
+            'age_at_entry': [30, 40],
+            'sex': ['M', 'F'],
+            'policy_term': [10, 20]
         })
         
         # Create invalid Excel file (missing columns)
         invalid_df = pd.DataFrame({
-            'PolicyID': ['P001'],
-            'Age': [30]
+            'Policy number': ['P001'],
+            'age_at_entry': [30]
         })
         
         # Save DataFrames to bytes buffer
@@ -72,7 +72,7 @@ def test_valid_excel_files(mock_s3_bucket):
     
     assert len(dfs) == 1  # Only one valid file should be processed
     assert isinstance(dfs[0], pd.DataFrame)
-    assert list(dfs[0].columns) == ['PolicyID', 'Age', 'Gender', 'Term']
+    assert list(dfs[0].columns) == ['Policy number', 'age_at_entry', 'sex', 'policy_term']
     assert len(dfs[0]) == 2  # Two rows in valid file
 
 def test_no_excel_files(mock_s3_bucket):
