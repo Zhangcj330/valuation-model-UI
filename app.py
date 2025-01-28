@@ -2,6 +2,10 @@ import streamlit as st
 import datetime
 from model_utils import load_assumptions, load_model_points, initialize_model, run_model_calculations
 from settings_utils import load_settings, save_settings, validate_settings
+from log import ModelLogger  # Import the ModelLogger class
+
+# Initialize the logger
+logger = ModelLogger()
 
 def display_settings_management(saved_settings):
     """Display the settings management section"""
@@ -67,6 +71,7 @@ def collect_form_inputs(saved_settings):
 
 def process_model_run(settings):
     """Process the model run and display results"""
+    start_time = datetime.datetime.now()
     try:
         # Download and process input files
         assumptions = load_assumptions(settings["assumption_table_url"])
@@ -77,6 +82,16 @@ def process_model_run(settings):
         
         # Run model for each product group
         results = run_model_calculations(model, settings["product_groups"])
+        
+        end_time = datetime.datetime.now()
+        # Log successful run with ModelLogger
+        logger.create_run_log(
+            settings=settings,
+            start_time=start_time,
+            end_time=end_time,
+            status="success",
+            output_location=None  # You can add output location if needed
+        )
         
         # Display results
         st.success("Model run completed successfully!")
@@ -90,6 +105,15 @@ def process_model_run(settings):
                 st.write(product_results['analytic'])
                 
     except Exception as e:
+        end_time = datetime.datetime.now()
+        # Log failed run with ModelLogger
+        logger.create_run_log(
+            settings=settings,
+            start_time=start_time,
+            end_time=end_time,
+            status="error",
+            error_message=str(e)
+        )
         st.error(f"Error running model: {str(e)}")
 
 def main():
@@ -97,7 +121,9 @@ def main():
     
     saved_settings = load_settings()
     display_settings_management(saved_settings)
-    
+    # Add run history display
+    logger.display_run_history(limit=10)
+
     with st.form("pricing_model_settings"):
         settings = collect_form_inputs(saved_settings)
         
@@ -123,3 +149,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

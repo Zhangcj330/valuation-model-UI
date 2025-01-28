@@ -3,12 +3,18 @@ from pathlib import Path
 import datetime
 import os
 import streamlit as st
+import boto3
+from dotenv import load_dotenv
 
 class ModelLogger:
     def __init__(self, log_dir="model_run_logs"):
         """Initialize ModelLogger with log directory"""
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
+        load_dotenv()
+        self.s3_bucket = os.getenv('S3_LOG_BUCKET')
+        self.s3_prefix = os.getenv('S3_LOG_PREFIX', 'model_logs/')
+        self.s3_client = boto3.client('s3')
     
     def create_run_log(self, settings, start_time, end_time, status, output_location=None, error_message=None):
         """Create a log entry for the model run"""
@@ -34,10 +40,22 @@ class ModelLogger:
             "error_message": error_message
         }
         
-        # Save log to file
+        # Save log to local file
         log_file = self.log_dir / f"run_log_{start_time.strftime('%Y%m%d_%H%M%S')}.json"
         with open(log_file, "w") as f:
             json.dump(log_entry, f, indent=4)
+        
+        # Upload log to S3
+        if self.s3_bucket:
+            try:
+                s3_key = f"{self.s3_prefix}run_log_{start_time.strftime('%Y%m%d_%H%M%S')}.json"
+                self.s3_client.upload_file(
+                    str(log_file),
+                    self.s3_bucket,
+                    s3_key
+                )
+            except Exception as e:
+                print(f"Failed to upload log to S3: {str(e)}")
         
         return log_entry
     
@@ -53,31 +71,35 @@ class ModelLogger:
                 history.append(json.load(f))
         return history
     
-    def display_run_history(self, limit=10):
-        """Display run history in Streamlit"""
-        log_files = sorted(self.log_dir.glob("*.json"), reverse=True)
-        if not log_files:
-            st.info("No previous runs found")
-            return
+    def display_run_history(self, limit=None):
+        """Display run history in Streamlit sidebar"""
+        history = self.get_run_history(limit)
         
-        st.subheader("Run History")
-        for log_file in list(log_files)[:limit]:
-            with open(log_file, "r") as f:
-                log_entry = json.load(f)
-                
-            with st.expander(f"Run at {log_entry['run_timestamp']}"):
-                # Display summary information
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("Status:", log_entry["execution_details"]["status"])
-                    st.write("Duration:", f"{log_entry['execution_details']['duration_seconds']:.1f} seconds")
-                with col2:
-                    st.write("Products:", ", ".join(log_entry["inputs"]["product_groups"]))
-                    st.write("User:", log_entry["user"])
-                
-                # Show full details in expandable section
-                if st.checkbox("Show full details", key=f"details_{log_entry['run_timestamp']}"):
-                    st.json(log_entry)
+        with st.sidebar:
+            st.subheader("Model Run History")
+            
+            if not history:
+                st.write("No run history available")
+                return
+
+            for log_entry in history:
+                with st.container():
+                    # Use smaller text and more compact layout for sidebar
+                    st.markdown(f"**{log_entry['run_timestamp']}**")
+                    status_color = "🟢" if log_entry['execution_details']['status'] == 'success' else "🔴"
+                    st.write(f"{status_color} {log_entry['execution_details']['status']}")
+                    
+                    with st.expander("View Details"):
+                        st.write("**Settings:**")
+                        st.json(log_entry['inputs'])
+                        
+                        if log_entry.get('output_location'):
+                            st.write(f"**Output:** {log_entry['output_location']}")
+                        
+                        if log_entry.get('error_message'):
+                            st.error(f"Error: {log_entry['error_message']}")
+                    
+                    st.markdown("---")  # Separator between entries
     
     def clear_old_logs(self, days_to_keep=30):
         """Clear logs older than specified days"""
