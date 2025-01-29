@@ -134,7 +134,7 @@ def process_model_run(settings):
             # Process each model point file
             for mp_idx, model_points_df in enumerate(model_points_list, 1):
                 status_text.text(f"Processing model point file {mp_idx}/{len(model_points_list)}...")
-                
+                product_groups = settings["product_groups"][mp_idx-1]
                 # Initialize model for this set of model points
                 model = initialize_model(settings, assumptions, model_points_df)
                 current_step += 1
@@ -156,7 +156,6 @@ def process_model_run(settings):
                     time_text.text(f"Estimated time remaining: {estimated_remaining_time:.1f} seconds")
                     
                     # Calculate results for current product
-                    model.product = product
                     results[product] = {
                         'present_value': model.Results_at_t.aggregate_pvs(),
                         'cashflows': model.Results_at_t.aggregate_cfs().to_dict(),
@@ -166,8 +165,7 @@ def process_model_run(settings):
                     progress_bar.progress(current_step / total_steps)
                 
                 # Generate unique identifier for this model point set
-                model_point_id = model_points_df.get('model_point_set_id', '').iloc[0] if 'model_point_set_id' in model_points_df.columns else f"set_{mp_idx}"
-                all_results[model_point_id] = results
+                all_results[product_groups] = results
             
             # Save results to S3
             status_text.text("Saving results to S3...")
@@ -201,8 +199,8 @@ def process_model_run(settings):
                 st.write(f"- {location}")
                 
             st.subheader("Model Results")
-            for model_point_id, results in all_results.items():
-                with st.expander(f"Results for Model Point Set: {model_point_id}"):
+            for product, results in all_results.items():
+                with st.expander(f"Results for Model Point Set: {product}"):
                     for product, product_results in results.items():
                         st.write(f"\nProduct: {product}")
                         st.write("Present Value:", product_results['present_value'])
