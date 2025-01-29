@@ -23,16 +23,54 @@ def save_settings(settings):
     with open(settings_file, "w") as f:
         json.dump(settings, f, indent=4)
 
-def validate_settings(settings):
-    """Validate user input settings"""
-    if not settings["product_groups"]:
-        raise ValueError("Please select at least one product group")
-        
-    if not all([settings["assumption_table_url"], settings["model_point_files_url"]]):
-        raise ValueError("Please provide all S3 URLs")
-        
-    for url in [settings["assumption_table_url"], settings["model_point_files_url"]]:
-        if not url.startswith('s3://'):
-            raise ValueError(f"Invalid S3 URL format: {url}")
+def validate_settings(settings, validate_required=False):
+    """
+    Validate settings dictionary
     
-    return True 
+    Args:
+        settings (dict): Settings dictionary to validate
+        validate_required (bool): If True, validates all required fields must be present
+                                If False, allows empty fields for saving settings
+    """
+    try:
+        # Basic structure validation
+        required_keys = [
+            "valuation_date",
+            "assumption_table_url",
+            "model_point_files_url",
+            "projection_period",
+            "product_groups",
+            "output_s3_url"
+        ]
+        
+        missing_keys = [key for key in required_keys if key not in settings]
+        if missing_keys:
+            raise ValueError(f"Missing required settings: {', '.join(missing_keys)}")
+            
+        # Only validate non-empty values if validate_required is False
+        if validate_required:
+            # Validate S3 URLs
+            s3_urls = [
+                ("assumption_table_url", settings["assumption_table_url"]),
+                ("model_point_files_url", settings["model_point_files_url"]),
+                ("output_s3_url", settings["output_s3_url"])
+            ]
+            
+            for url_name, url in s3_urls:
+                if not url:
+                    raise ValueError(f"Missing required S3 URL for {url_name}")
+                if not url.startswith('s3://'):
+                    raise ValueError(f"Invalid S3 URL format for {url_name}: {url}")
+            
+            # Validate product groups
+            if not settings["product_groups"]:
+                raise ValueError("At least one product group must be selected")
+            
+            # Validate projection period
+            if settings["projection_period"] < 1:
+                raise ValueError("Projection period must be at least 1 year")
+                
+        return True
+        
+    except Exception as e:
+        raise ValueError(f"Settings validation failed: {str(e)}") 

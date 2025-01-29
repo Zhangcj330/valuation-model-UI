@@ -1,0 +1,22 @@
+{
+    "run_timestamp": "2025-01-29T15:00:43.317156",
+    "user": "tianying",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run1/Assumption.xlsx",
+        "model_point_files": "s3://valuation-model/term/run1/",
+        "valuation_date": "2025-01-10",
+        "projection_period": 20,
+        "product_groups": [
+            "Model Points",
+            "Model Points 2"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-01-29T15:00:43.317156",
+        "end_time": "2025-01-29T15:00:43.735416",
+        "duration_seconds": 0.41826,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "Error downloading from S3: File not found: s3://valuation-model/term/run1/Assumption.xlsx"
+}

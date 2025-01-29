@@ -1,9 +1,11 @@
 import streamlit as st
 import datetime
+import pandas as pd
+
 from model_utils import load_assumptions, load_model_points, initialize_model, run_model_calculations, save_results_to_s3, process_all_model_points
 from settings_utils import load_settings, save_settings, validate_settings
-from log import ModelLogger  # Import the ModelLogger class
-import pandas as pd
+from log import ModelLogger 
+from s3_utils import get_excel_filenames_from_s3
 
 # Initialize the logger
 logger = ModelLogger()
@@ -42,37 +44,64 @@ def collect_form_inputs(saved_settings):
             value=saved_settings.get("assumption_table_url", "") if saved_settings else "",
             help="Format: s3://bucket-name/path/to/file.xlsx"
         ),
-        
-        "model_point_files_url": st.text_input(
+    }
+    
+    # Create a container for model point URL and confirmation
+    col1, col2 = st.columns([3, 1], gap="small" , vertical_alignment="bottom")
+    
+    with col1:
+        model_point_url = st.text_input(
             "Enter S3 URL for model point files",
             value=saved_settings.get("model_point_files_url", "") if saved_settings else "",
-            help="Format: s3://bucket-name/path/to/file.xlsx"
-        ),
-        
-        "projection_period": st.number_input(
-            "Projection Period (Years)",
-            min_value=1,
-            max_value=100,
-            value=saved_settings.get("projection_period", 30) if saved_settings else 30,
-            help="Enter the number of years to project"
-        ),
-        
-        "product_groups": st.multiselect(
-            "Select Product Groups to Run",
-            options=[
-                "Term Life", "Whole Life", "Universal Life",
-                "Annuities", "Group Insurance", "Disability Insurance"
-            ],
+            help="Format: s3://bucket-name/path/",
+            key="mp_url_input"
+        )
+    with col2:
+        confirm_button = st.form_submit_button("Confirm URL")
+    
+    settings["model_point_files_url"] = model_point_url
+    
+    # Handle URL confirmation and file listing
+    if confirm_button and model_point_url:
+        try:
+            available_products = get_excel_filenames_from_s3(model_point_url)
+            if available_products:
+                st.session_state['available_products'] = available_products
+            else:
+                st.session_state['available_products'] = []
+        except Exception as e:
+            st.error(f"Error accessing S3 path: {str(e)}")
+            st.session_state['available_products'] = []
+    
+    settings["projection_period"] = st.number_input(
+        "Projection Period (Years)",
+        min_value=1,
+        max_value=100,
+        value=saved_settings.get("projection_period", 30) if saved_settings else 30,
+        help="Enter the number of years to project"
+    )
+    
+    # Product Groups selection
+    available_products = st.session_state.get('available_products', [])
+    if available_products:
+        selected_products = st.multiselect(
+            "Product Groups",
+            options=available_products,
             default=saved_settings.get("product_groups", []) if saved_settings else [],
-            help="Choose one or more product groups to include in the run"
-        ),
-        
-        "output_s3_url": st.text_input(
-            "Enter S3 URL for storing results",
-            value=saved_settings.get("output_s3_url", "") if saved_settings else "",
-            help="Format: s3://bucket-name/path/to/output/folder/"
-        ),
-    }
+            help="Select product groups to process",
+            placeholder="Please select at least one product group"
+        )
+    else:
+        st.multiselect("Product Groups" , options=available_products, help="Confirm model points files URL to show the available products")
+        selected_products = []
+    
+    settings["product_groups"] = selected_products
+    
+    settings["output_s3_url"] = st.text_input(
+        "Enter S3 URL for storing results",
+        value=saved_settings.get("output_s3_url", "") if saved_settings else "",
+        help="Format: s3://bucket-name/path/to/output/folder/"
+    )
     
     return settings
 
@@ -218,14 +247,13 @@ def main():
         
         if submitted or save_button:
             try:
-                validate_settings(settings)
-                
-                if save_button:
+                if submitted:
+                    # Full validation when running the model
+                    validate_settings(settings, validate_required=True)
+                    process_model_run(settings)
+                else:
                     save_settings(settings)
                     st.success("Settings saved successfully!")
-                
-                if submitted:
-                    process_model_run(settings)
                     
             except ValueError as e:
                 st.error(str(e))

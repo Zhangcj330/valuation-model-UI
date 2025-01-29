@@ -294,4 +294,48 @@ def upload_to_s3(content, s3_url):
         return s3_url
         
     except Exception as e:
-        raise Exception(f"Failed to upload to S3: {str(e)}") 
+        raise Exception(f"Failed to upload to S3: {str(e)}")
+
+def get_excel_filenames_from_s3(s3_path):
+    """
+    Get list of Excel file names from specified S3 path
+    
+    Args:
+        s3_path (str): S3 path in format 's3://bucket-name/prefix/'
+    
+    Returns:
+        list: List of Excel file names (without path)
+    """
+    try:
+        # Parse bucket and prefix from s3_path
+        bucket_name = s3_path.split('/')[2]
+        prefix = '/'.join(s3_path.split('/')[3:])
+        
+        # Get S3 client
+        s3_client = get_s3_client()
+        
+        # List objects in the specified path
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=prefix
+        )
+        
+        if 'Contents' not in response:
+            logger.warning(f"No files found in {s3_path}")
+            return []
+            
+        # Filter for .xlsx files and extract just the filename
+        excel_files = []
+        for obj in response['Contents']:
+            if obj['Key'].endswith('.xlsx'):
+                # Get just the filename without the path
+                filename = obj['Key'].split('/')[-1]
+                # Remove the .xlsx extension
+                filename = filename.replace('.xlsx', '')
+                excel_files.append(filename)
+        
+        return sorted(excel_files)  # Return sorted list of filenames
+        
+    except Exception as e:
+        logger.error(f"Error getting Excel filenames from S3: {str(e)}")
+        raise 

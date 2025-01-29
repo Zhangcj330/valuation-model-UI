@@ -1,10 +1,11 @@
 {
-    "valuation_date": "2025-01-15",
+    "valuation_date": "2025-01-10",
     "assumption_table_url": "s3://valuation-model/term/run1/Assumptions.xlsx",
-    "model_point_files_url": "s3://valuation-model/term/run1",
+    "model_point_files_url": "s3://valuation-model/term/run1/",
     "projection_period": 20,
     "product_groups": [
-        "Term Life"
+        "Model Points",
+        "Model Points 2"
     ],
     "output_s3_url": "s3://valuation-model/term/run1/output"
 }
