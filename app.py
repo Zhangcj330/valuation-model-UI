@@ -36,7 +36,7 @@ def collect_form_inputs(saved_settings):
         "valuation_date": st.date_input(
             "Valuation Date",
             value=default_date,
-            help="Select the valuation date for the pricing model"
+            help="Select the valuation date for the valuation model"
         ),
         
         # Add model selection dropdown
@@ -115,7 +115,7 @@ def collect_form_inputs(saved_settings):
 
 def process_model_run(settings):
     """Process the model run and display results"""
-    st.success("Settings validated! Ready to run pricing model.")
+    st.success("Settings validated! Ready to run valuation model.")
     
     # Initialize progress indicators
     progress_bar = st.progress(0)
@@ -124,7 +124,7 @@ def process_model_run(settings):
     
     start_time = datetime.datetime.now()
     
-    with st.spinner('Running pricing model...'):
+    with st.spinner('Running valuation model...'):
         try:
             # Download and process input files
             status_text.text("Downloading and processing input files...")
@@ -233,19 +233,19 @@ def process_model_run(settings):
             st.error(f"Error running model: {str(e)}")
 
 def main():
-    st.title("Enterprise Pricing Model Settings")
+    st.title("Enterprise valuation Model Settings")
     
     saved_settings = load_settings()
     display_settings_management(saved_settings)
     # Add run history display
     logger.display_run_history(limit=10)
 
-    with st.form("pricing_model_settings"):
+    with st.form("valuation_model_settings"):
         settings = collect_form_inputs(saved_settings)
         
         col1, col2 = st.columns(2)
         with col1:
-            submitted = st.form_submit_button("Run Pricing Model")
+            submitted = st.form_submit_button("Run valuation Model")
         with col2:
             save_button = st.form_submit_button("Save Settings")
         
