@@ -4,10 +4,10 @@ import pandas as pd
 import io
 import os
 
-from model_utils import load_assumptions, load_model_points, initialize_model, run_model_calculations, save_results_to_s3, process_all_model_points, get_available_models
+from model_utils import load_assumptions, load_model_points, initialize_model
 from settings_utils import load_settings, save_settings, validate_settings
 from log import ModelLogger 
-from s3_utils import get_excel_filenames_from_s3, upload_to_s3
+from s3_utils import get_excel_filenames_from_s3, upload_to_s3, get_foldernames_from_s3
 
 # Initialize the logger
 logger = ModelLogger()
@@ -41,20 +41,55 @@ def collect_form_inputs(saved_settings):
             help="Select the valuation date for the valuation model"
         ),
         
-        # Add model selection dropdown
-        "model_name": st.selectbox(
-            "Select Model Version",
-            options=get_available_models(),
-            index=0 if not saved_settings else get_available_models().index(saved_settings.get("model_name", get_available_models()[0])),
-            help="Choose which model version to use for calculations"
-        ),
-        
         "assumption_table_url": st.text_input(
             "Enter S3 URL for assumption table",
             value=saved_settings.get("assumption_table_url", "") if saved_settings else "",
             help="Format: s3://bucket-name/path/to/file.xlsx"
         ),
     }
+        # Create a container for models URL and confirmation
+    col1, col2 = st.columns([3, 1], gap="small" , vertical_alignment="bottom")
+    
+    with col1:
+        models_url = st.text_input(
+            "Enter S3 URL for models",
+            value=saved_settings.get("models_url", "") if saved_settings else "",
+            help="Format: s3://bucket-name/path/",
+            key="models_url_input"
+        )
+    with col2:
+        confirm_button_models = st.form_submit_button("Check Models")
+    
+    settings["models_url"] = models_url
+
+    # Handle URL confirmation and file listing
+    if confirm_button_models and models_url:
+        try:
+            available_models = get_foldernames_from_s3(models_url)
+            if available_models:
+                st.session_state['available_models'] = available_models
+            else:
+                st.session_state['available_models'] = []
+        except Exception as e:
+            st.error(f"Error accessing S3 path: {str(e)}")
+            st.session_state['available_models'] = []
+
+    # Product Groups selection
+    available_models = st.session_state.get('available_models', [])
+    if available_models:
+        selected_models = st.multiselect(
+            "Model selection",
+            options=available_models,
+            default=saved_settings.get("model_name", []) if saved_settings else [],
+            help="Select model to process",
+            placeholder="Please select your model"
+        )
+    else:
+        st.selectbox("Model selection", options=available_models, 
+                      help="Confirm model points files URL to show the available models")
+        selected_models = []
+    
+    settings["model_name"] = selected_models
     
     # Create a container for model point URL and confirmation
     col1, col2 = st.columns([3, 1], gap="small" , vertical_alignment="bottom")
@@ -67,7 +102,7 @@ def collect_form_inputs(saved_settings):
             key="mp_url_input"
         )
     with col2:
-        confirm_button = st.form_submit_button("Confirm URL")
+        confirm_button = st.form_submit_button("Confirm URL" )
     
     settings["model_point_files_url"] = model_point_url
     
@@ -82,6 +117,30 @@ def collect_form_inputs(saved_settings):
         except Exception as e:
             st.error(f"Error accessing S3 path: {str(e)}")
             st.session_state['available_products'] = []
+
+    
+    # Product Groups selection
+    available_products = st.session_state.get('available_products', [])
+    if available_products:
+        # Filter default values to ensure they exist in available options
+        default_products = []
+        if saved_settings and "product_groups" in saved_settings:
+            default_products = [p for p in saved_settings["product_groups"] if p in available_products]
+            
+        selected_products = st.multiselect(
+            "Product Groups",
+            options=available_products,
+            default=default_products,  # Use filtered defaults
+            help="Select product groups to process",
+            placeholder="Please select at least one product group"
+        )
+    else:
+        st.multiselect("Product Groups", options=available_products, 
+                      help="Confirm model points files URL to show the available products")
+        selected_products = []
+    
+    settings["product_groups"] = selected_products
+    
     
     settings["projection_period"] = st.number_input(
         "Projection Period (Years)",
@@ -90,23 +149,7 @@ def collect_form_inputs(saved_settings):
         value=saved_settings.get("projection_period", 30) if saved_settings else 30,
         help="Enter the number of years to project"
     )
-    
-    # Product Groups selection
-    available_products = st.session_state.get('available_products', [])
-    if available_products:
-        selected_products = st.multiselect(
-            "Product Groups",
-            options=available_products,
-            default=saved_settings.get("product_groups", []) if saved_settings else [],
-            help="Select product groups to process",
-            placeholder="Please select at least one product group"
-        )
-    else:
-        st.multiselect("Product Groups" , options=available_products, help="Confirm model points files URL to show the available products")
-        selected_products = []
-    
-    settings["product_groups"] = selected_products
-    
+
     settings["output_s3_url"] = st.text_input(
         "Enter S3 URL for storing results",
         value=saved_settings.get("output_s3_url", "") if saved_settings else "",
@@ -162,7 +205,7 @@ def process_model_run(settings):
                 output_filename = f"results_{product}_{start_time}.xlsx"
                 output_path = os.path.join(settings["output_s3_url"].rstrip('/'), output_filename)
                 output_buffer.seek(0)
-                print(1)
+                
                 upload_to_s3(output_buffer.getvalue(), output_path)
                 # Calculate results
                 results[product] = {

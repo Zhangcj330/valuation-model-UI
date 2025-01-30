@@ -33,13 +33,15 @@ def validate_settings(settings, validate_required=False):
                                 If False, allows empty fields for saving settings
     """
     try:
-        # Basic structure validation - remove product_groups from required keys
+        # Basic structure validation
         required_keys = [
             "valuation_date",
+            "models_url",
             "model_name",
             "assumption_table_url",
             "model_point_files_url",
             "projection_period",
+            "product_groups",
             "output_s3_url"
         ]
         
@@ -47,16 +49,21 @@ def validate_settings(settings, validate_required=False):
         if missing_keys:
             raise ValueError(f"Missing required settings: {', '.join(missing_keys)}")
             
-        # Only validate non-empty values if validate_required is False
+        # Only validate non-empty values if validate_required is True
         if validate_required:
-            # Validate model name
-            if not settings["model_name"]:
-                raise ValueError("Model name must be selected")
+            # Validate models URL
+            if not settings["models_url"]:
+                raise ValueError("Models URL must be provided")
+            if not settings["models_url"].startswith('s3://'):
+                raise ValueError("Invalid models URL format. Must start with 's3://'")
             
-            # Check if selected model exists
-            model_path = Path(f"models/{settings['model_name']}")
-            if not model_path.exists():
-                raise ValueError(f"Selected model not found: {settings['model_name']}")
+            # Validate model selection
+            if not settings["model_name"]:
+                raise ValueError("A model must be selected")
+            if isinstance(settings["model_name"], list):
+                if len(settings["model_name"]) != 1:
+                    raise ValueError("Please select exactly one model")
+                settings["model_name"] = settings["model_name"][0]  # Convert list to single value
             
             # Validate S3 URLs
             s3_urls = [
@@ -71,8 +78,8 @@ def validate_settings(settings, validate_required=False):
                 if not url.startswith('s3://'):
                     raise ValueError(f"Invalid S3 URL format for {url_name}: {url}")
             
-            # Validate product groups only when running the model
-            if "product_groups" not in settings or not settings["product_groups"]:
+            # Validate product groups
+            if not settings["product_groups"]:
                 raise ValueError("At least one product group must be selected")
             
             # Validate projection period

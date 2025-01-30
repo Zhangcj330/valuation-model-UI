@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 import tempfile
 import pandas as pd
 import logging
-from typing import Union
+
 
 logger = logging.getLogger(__name__)
 
@@ -346,4 +346,106 @@ def get_excel_filenames_from_s3(s3_path):
         
     except Exception as e:
         logger.error(f"Error getting Excel filenames from S3: {str(e)}")
+        raise
+
+def get_foldernames_from_s3(s3_path):
+    """
+    Get list of folder names from specified S3 path
+    
+    Args:
+        s3_path (str): S3 path in format 's3://bucket-name/prefix/'
+    
+    Returns:
+        list: List of folder names
+    """
+    try:
+        # Parse bucket and prefix from s3_path
+        if not s3_path.startswith('s3://'):
+            raise ValueError("S3 URL must start with 's3://'")
+            
+        bucket_name = s3_path.split('/')[2]
+        prefix = '/'.join(s3_path.split('/')[3:])
+        
+        # Ensure prefix ends with '/'
+        if prefix and not prefix.endswith('/'):
+            prefix += '/'
+        
+        # Get S3 client
+        s3_client = get_s3_client()
+        
+        # List objects with delimiter to get folders
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=prefix,
+            Delimiter='/'
+        )
+        
+        folders = []
+        
+        # Get common prefixes (folders)
+        if 'CommonPrefixes' in response:
+            for obj in response['CommonPrefixes']:
+                # Get the folder name without the full path and trailing slash
+                folder_path = obj['Prefix']
+                folder_name = folder_path.rstrip('/').split('/')[-1]
+                folders.append(folder_name)
+                
+        return sorted(folders)  # Return sorted list of folder names
+        
+    except Exception as e:
+        logger.error(f"Error getting folders from S3: {str(e)}")
         raise 
+
+
+def download_folder_from_s3(models_url, model_name, local_path):
+    """
+    Download an entire folder from S3 URL to a local path with authentication
+    Parameters:
+        s3_url (str): S3 URL of the folder to download
+        local_path (str): Relative or absolute path where files should be downloaded
+    """
+    try:
+        if not models_url.endswith('/'):
+            models_url += '/'
+        if model_name.startswith('/'):
+            model_name = model_name[1:]
+
+        s3_url = models_url + model_name
+        # Convert relative path to absolute path relative to current working directory
+        local_path = os.path.abspath(os.path.join(os.getcwd(), local_path))
+        
+        parsed_url = urlparse(s3_url)
+        bucket_name = parsed_url.netloc
+        prefix = parsed_url.path.lstrip('/')
+
+        # Create base directory if it doesn't exist
+        if not os.path.exists(local_path):
+            os.makedirs(local_path)
+
+        s3_client = get_s3_client()
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+
+        for page in pages:
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                
+                # Get the path relative to the prefix
+                relative_path = os.path.relpath(key, prefix)
+                
+                # Join with local path to get the final destination
+                local_file_path = os.path.join(local_path, relative_path)
+                local_file_dir = os.path.dirname(local_file_path)
+                
+                # Debug print to see exactly where we're trying to create directories
+                print(f"Creating directory: {local_file_dir}")
+                
+                if not os.path.exists(local_file_dir):
+                    os.makedirs(local_file_dir)
+                
+                print(f"Downloading {key} to {local_file_path}")
+                with open(local_file_path, 'wb') as f:
+                    s3_client.download_fileobj(bucket_name, key, f)
+
+    except Exception as e:
+        raise Exception(f"Error downloading folder from S3: {str(e)}")

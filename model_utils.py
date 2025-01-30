@@ -1,12 +1,11 @@
+from re import M
 import pandas as pd
 import modelx as mx
-from s3_utils import download_from_s3, download_and_validate_excel_files, upload_to_s3
-import os
-from datetime import datetime
-import json
+from s3_utils import download_from_s3, download_and_validate_excel_files, get_foldernames_from_s3, download_folder_from_s3
+
 import logging
 from pathlib import Path
-import io
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +38,13 @@ def load_model_points(model_points_url):
         return model_point_files
     return [model_point_files]  # Return as list for consistent handling
 
-def get_available_models():
+def get_available_models(s3_models_url):
     """Get list of available models from the models directory"""
     try:
         # Assuming models are in a 'models' directory
+        model_names = get_foldernames_from_s3(s3_models_url)
         model_dir = Path("models")
+
         if not model_dir.exists():
             raise ValueError("Models directory not found")
             
@@ -62,12 +63,11 @@ def initialize_model(settings, assumptions, model_points_df):
     model_name = settings.get("model_name")
     if not model_name:
         raise ValueError("Model name not specified in settings")
-        
-    model_path = f"models/{model_name}"
-    if not Path(model_path).exists():
-        raise ValueError(f"Model not found: {model_name}")
-        
-    model = mx.read_model(model_path)
+    
+    model_path = settings.get('models_url')
+    
+    download_folder_from_s3(model_path, model_name, "./tmp")
+    model = mx.read_model("./tmp")
     model.Data_Inputs.proj_period = settings["projection_period"]
     model.Data_Inputs.val_date = settings["valuation_date"]
     model.assumptions = assumptions
@@ -93,33 +93,6 @@ def process_all_model_points(settings, assumptions, model_points_list):
         
     return all_results
 
-def save_results_to_s3(results, model_points_url, output_s3_url):
-    """Save model results to S3"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    saved_locations = []
-    
-    # Save individual results for each model point set
-    for model_point_id, model_results in results.items():
-        # Create results dictionary with metadata
-        results_with_metadata = {
-            "timestamp": timestamp,
-            "model_points_source": model_points_url,
-            "model_point_set": model_point_id,
-            "results": model_results
-        }
-        
-        # Convert results to JSON
-        results_json = json.dumps(results_with_metadata, default=str)
-        
-        # Generate output filename
-        output_filename = f"results_{model_point_id}_{timestamp}.json"
-        output_path = os.path.join(output_s3_url.rstrip('/'), output_filename)
-        
-        # Upload to S3
-        upload_to_s3(results_json, output_path)
-        saved_locations.append(output_path)
-    
-    return saved_locations
 def run_model_calculations(model, product_groups):
     """Run calculations for each product group"""
     results = {}
