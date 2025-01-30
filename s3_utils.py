@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 import tempfile
 import pandas as pd
 import logging
+from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,10 @@ def validate_excel_files(file_paths):
             try:
                 df = pd.read_excel(temp_file_path)
                 
+                # Add filename as attribute to DataFrame
+                filename = file_key.split('/')[-1]  # Get just the filename
+                df.filename = filename
+                
                 # Dictionary to store matched column names
                 column_mapping = {}
                 missing_columns = []
@@ -221,7 +226,7 @@ def validate_excel_files(file_paths):
                 # Additional validation checks can be added here
                 
                 validated_dfs.append(df_standardized)
-                logger.info(f"Successfully validated file: {file_key}")
+                logger.info(f"Successfully validated file: {filename}")
                 logger.info(f"Column mapping used: {column_mapping}")
                 
             except Exception as e:
@@ -262,7 +267,7 @@ def upload_to_s3(content, s3_url):
     Upload content to S3
     
     Args:
-        content (str): The content to upload (e.g., JSON string)
+        content (Union[str, bytes]): The content to upload (string or bytes)
         s3_url (str): The S3 URL in format s3://bucket-name/path/to/file
         
     Returns:
@@ -280,8 +285,11 @@ def upload_to_s3(content, s3_url):
         bucket = path_parts[0]
         key = path_parts[1]
         
-        # Convert string content to bytes
-        content_bytes = content.encode('utf-8')
+        # Convert content to bytes if it's a string
+        if isinstance(content, str):
+            content_bytes = content.encode('utf-8')
+        else:
+            content_bytes = content
         
         # Upload to S3
         s3_client = get_s3_client()

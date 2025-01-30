@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -119,14 +120,14 @@ def save_results_to_s3(results, model_points_url, output_s3_url):
         saved_locations.append(output_path)
     
     return saved_locations
-
 def run_model_calculations(model, product_groups):
     """Run calculations for each product group"""
     results = {}
     for product in product_groups:
         model.product = product
         results[product] = {
-            'analytic': model.Results.analytic() 
+            'present_value': model.Results.pv_results(0),
+            'analytics': model.Results.analytics() 
         }
     
     return results 

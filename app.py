@@ -1,11 +1,13 @@
 import streamlit as st
 import datetime
 import pandas as pd
+import io
+import os
 
 from model_utils import load_assumptions, load_model_points, initialize_model, run_model_calculations, save_results_to_s3, process_all_model_points, get_available_models
 from settings_utils import load_settings, save_settings, validate_settings
 from log import ModelLogger 
-from s3_utils import get_excel_filenames_from_s3
+from s3_utils import get_excel_filenames_from_s3, upload_to_s3
 
 # Initialize the logger
 logger = ModelLogger()
@@ -130,57 +132,50 @@ def process_model_run(settings):
             status_text.text("Downloading and processing input files...")
             assumptions = load_assumptions(settings["assumption_table_url"])
             model_points_list = load_model_points(settings["model_point_files_url"])
-            
-            # Calculate total steps (3 steps per product per model point file)
-            steps_per_product = 3
-            total_steps = len(settings["product_groups"]) * steps_per_product * len(model_points_list)
+
+            # Calculate total steps
+            total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
             current_step = 0
             progress_bar.progress(current_step / total_steps)
-            
-            all_results = {}
-            
-            # Process each model point file
-            for mp_idx, model_points_df in enumerate(model_points_list, 1):
-                status_text.text(f"Processing model point file {mp_idx}/{len(model_points_list)}...")
-                product_groups = settings["product_groups"][mp_idx-1]
-                # Initialize model for this set of model points
+            output_locations = []
+            results = {}
+            # Process each product/model point file
+            for product_idx, product in enumerate(settings["product_groups"], 1):
+                status_text.text(f"Processing {product}... ({product_idx}/{len(settings['product_groups'])})")
+                
+                # Find matching model points file for this product
+                
+                model_points_df = model_points_list[product_idx-1]
+                
+                # Initialize and run model
                 model = initialize_model(settings, assumptions, model_points_df)
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
+                pv_df =  model.Results.pv_results(0)
+                analytics_df = model.Results.analytics()
+
+                output_buffer = io.BytesIO()
+                with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
+                    analytics_df.to_excel(writer, sheet_name='analytics', index=False)
+                    pv_df.to_excel(writer, sheet_name='present_value', index=False)
                 
-                results = {}
-                # Run model for each product group
-                for product_idx, product in enumerate(settings["product_groups"], 1):
-                    current_time = datetime.datetime.now()
-                    elapsed_time = (current_time - start_time).total_seconds()
-                    
-                    # Calculate average time per step and estimated remaining time
-                    avg_time_per_step = elapsed_time / current_step if current_step > 0 else 0
-                    remaining_steps = total_steps - current_step
-                    estimated_remaining_time = avg_time_per_step * remaining_steps
-                    
-                    status_text.text(f"Processing {product} for model point set {mp_idx}... "
-                                   f"({product_idx}/{len(settings['product_groups'])})")
-                    time_text.text(f"Estimated time remaining: {estimated_remaining_time:.1f} seconds")
-                    
-                    # Calculate results for current product
-                    results[product] = {
-                        'present_value': model.Results.pv_results(0),
-                        'analytic': model.Results.analytics() 
-                    }
-                    current_step += 2  # Increment for initialization and calculation
-                    progress_bar.progress(current_step / total_steps)
-                
-                # Generate unique identifier for this model point set
-                all_results[product_groups] = results
-            
+                output_filename = f"results_{product}_{start_time}.xlsx"
+                output_path = os.path.join(settings["output_s3_url"].rstrip('/'), output_filename)
+                output_buffer.seek(0)
+                print(1)
+                upload_to_s3(output_buffer.getvalue(), output_path)
+                # Calculate results
+                results[product] = {
+                    'present_value': pv_df,
+                    'analytics': analytics_df
+                }
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
+                output_locations.append(output_path)
+
             # Save results to S3
             status_text.text("Saving results to S3...")
-            output_locations = save_results_to_s3(
-                all_results, 
-                settings["model_point_files_url"],
-                settings["output_s3_url"]
-            )
+            
             
             end_time = datetime.datetime.now()
             total_time = (end_time - start_time).total_seconds()
@@ -205,15 +200,14 @@ def process_model_run(settings):
             for location in output_locations:
                 st.write(f"- {location}")
                 
+            # Display results in a simpler format
             st.subheader("Model Results")
-            for product, results in all_results.items():
-                with st.expander(f"Results for Model Point Set: {product}"):
-                    for product, product_results in results.items():
-                        st.write(f"\nProduct: {product}")
-                        st.write("Present Value:")
-                        st.write(product_results['present_value'])
-                        st.write("Analytic:")
-                        st.write(product_results['analytic'])
+            for product, product_results in results.items():
+                with st.expander(f"Results for {product}"):
+                    st.write("Present Value:")
+                    st.write(product_results['present_value'])
+                    st.write("Analytics:")
+                    st.write(product_results['analytics'])
                     
         except Exception as e:
             # Clear progress indicators
