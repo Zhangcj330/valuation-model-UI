@@ -2,7 +2,7 @@ import streamlit as st
 import datetime
 import pandas as pd
 
-from model_utils import load_assumptions, load_model_points, initialize_model, run_model_calculations, save_results_to_s3, process_all_model_points
+from model_utils import load_assumptions, load_model_points, initialize_model, run_model_calculations, save_results_to_s3, process_all_model_points, get_available_models
 from settings_utils import load_settings, save_settings, validate_settings
 from log import ModelLogger 
 from s3_utils import get_excel_filenames_from_s3
@@ -37,6 +37,14 @@ def collect_form_inputs(saved_settings):
             "Valuation Date",
             value=default_date,
             help="Select the valuation date for the pricing model"
+        ),
+        
+        # Add model selection dropdown
+        "model_name": st.selectbox(
+            "Select Model Version",
+            options=get_available_models(),
+            index=0 if not saved_settings else get_available_models().index(saved_settings.get("model_name", get_available_models()[0])),
+            help="Choose which model version to use for calculations"
         ),
         
         "assumption_table_url": st.text_input(
@@ -157,9 +165,8 @@ def process_model_run(settings):
                     
                     # Calculate results for current product
                     results[product] = {
-                        'present_value': model.Results_at_t.aggregate_pvs(),
-                        'cashflows': model.Results_at_t.aggregate_cfs().to_dict(),
-                        'analytic': model.Results_at_t.analytic() 
+                        'present_value': model.Results.pv_results(0),
+                        'analytic': model.Results.analytics() 
                     }
                     current_step += 2  # Increment for initialization and calculation
                     progress_bar.progress(current_step / total_steps)
@@ -203,9 +210,8 @@ def process_model_run(settings):
                 with st.expander(f"Results for Model Point Set: {product}"):
                     for product, product_results in results.items():
                         st.write(f"\nProduct: {product}")
-                        st.write("Present Value:", product_results['present_value'])
-                        st.write("Cashflows:")
-                        st.dataframe(pd.DataFrame(product_results['cashflows']))
+                        st.write("Present Value:")
+                        st.write(product_results['present_value'])
                         st.write("Analytic:")
                         st.write(product_results['analytic'])
                     

@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 import json
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,14 @@ def load_assumptions(assumption_url):
         'fixed_exp_table': pd.read_excel(assumption_file, sheet_name='fixed expenses'),
         'comm_table': pd.read_excel(assumption_file, sheet_name='commissions'),
         'disc_curve': pd.read_excel(assumption_file, sheet_name='discount curve'),
-        'mort_table': pd.read_excel(assumption_file, sheet_name='mortality')
+        'mort_table': pd.read_excel(assumption_file, sheet_name='mortality'),
+        'trauma_table': pd.read_excel(assumption_file, sheet_name='trauma'),
+        'tpd_table': pd.read_excel(assumption_file, sheet_name='TPD'),
+        'prem_rate_level_table': pd.read_excel(assumption_file, sheet_name='prem_rate_level'),
+        'prem_rate_stepped_table': pd.read_excel(assumption_file, sheet_name='prem_rate_stepped'),
+        'RA_table': pd.read_excel(assumption_file, sheet_name='RA'),
+        'RI_prem_rate_level_table': pd.read_excel(assumption_file, sheet_name='RI_prem_rate_level'),
+        'RI_prem_rate_stepped_table': pd.read_excel(assumption_file, sheet_name='RI_prem_rate_stepped')
     }
 
 def load_model_points(model_points_url):
@@ -30,13 +38,39 @@ def load_model_points(model_points_url):
         return model_point_files
     return [model_point_files]  # Return as list for consistent handling
 
+def get_available_models():
+    """Get list of available models from the models directory"""
+    try:
+        # Assuming models are in a 'models' directory
+        model_dir = Path("models")
+        if not model_dir.exists():
+            raise ValueError("Models directory not found")
+            
+        # Get all directories in the models folder
+        models = [d.name for d in model_dir.iterdir() if d.is_dir()]
+        if not models:
+            raise ValueError("No models found in models directory")
+            
+        return sorted(models)  # Return sorted list of model names
+    except Exception as e:
+        logger.error(f"Error getting available models: {str(e)}")
+        raise
+
 def initialize_model(settings, assumptions, model_points_df):
     """Initialize and configure the modelx model"""
-    model = mx.read_model("Basic_Term_Model_v1")
+    model_name = settings.get("model_name")
+    if not model_name:
+        raise ValueError("Model name not specified in settings")
+        
+    model_path = f"models/{model_name}"
+    if not Path(model_path).exists():
+        raise ValueError(f"Model not found: {model_name}")
+        
+    model = mx.read_model(model_path)
     model.Data_Inputs.proj_period = settings["projection_period"]
     model.Data_Inputs.val_date = settings["valuation_date"]
     model.assumptions = assumptions
-    model.model_points = model_points_df
+    model.model_point_table = model_points_df
     return model
 
 def process_all_model_points(settings, assumptions, model_points_list):
@@ -92,9 +126,7 @@ def run_model_calculations(model, product_groups):
     for product in product_groups:
         model.product = product
         results[product] = {
-            'present_value': model.Results_at_t.aggregate_pvs(),
-            'cashflows': model.Results_at_t.aggregate_cfs().to_dict(),  # Convert DataFrame to dict for JSON serialization
-            'analytic': model.Results_at_t.analytic() 
+            'analytic': model.Results.analytic() 
         }
     
     return results 

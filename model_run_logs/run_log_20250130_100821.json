@@ -1,0 +1,22 @@
+{
+    "run_timestamp": "2025-01-30T10:08:21.085862",
+    "user": "tianying",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run1/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run1/",
+        "valuation_date": "2025-01-10",
+        "projection_period": 20,
+        "product_groups": [
+            "Model Points",
+            "Model Points 2"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-01-30T10:08:21.085862",
+        "end_time": "2025-01-30T10:08:24.099943",
+        "duration_seconds": 3.014081,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "Attribute 'analytic' is not in space <UserSpace Basic_Term_Model.Results>"
+}

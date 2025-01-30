@@ -150,7 +150,7 @@ def aggregate_cfs():
     return Projection.result_cf()
 
 
-def analytic():
+def analytics():
     """Result table for analysis
     """
 

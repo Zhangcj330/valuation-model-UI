@@ -6,7 +6,7 @@ _allow_none = False
 
 _spaces = [
     "Projection",
-    "Results_at_t",
+    "Results",
     "Data_Inputs"
 ]
 

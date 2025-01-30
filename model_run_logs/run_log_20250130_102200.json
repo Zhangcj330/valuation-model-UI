@@ -1,0 +1,21 @@
+{
+    "run_timestamp": "2025-01-30T10:22:00.485581",
+    "user": "tianying",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run1/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run1/",
+        "valuation_date": "2025-01-10",
+        "projection_period": 20,
+        "product_groups": [
+            "Model Points"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-01-30T10:22:00.485581",
+        "end_time": "2025-01-30T10:22:09.653102",
+        "duration_seconds": 9.167521,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "list index out of range"
+}

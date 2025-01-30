@@ -1,0 +1,23 @@
+{
+    "run_timestamp": "2025-01-30T10:46:56.056835",
+    "user": "tianying",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run2/model point files/",
+        "valuation_date": "2025-01-10",
+        "projection_period": 30,
+        "product_groups": [
+            "Model Points"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-01-30T10:46:56.056835",
+        "end_time": "2025-01-30T10:47:08.071983",
+        "duration_seconds": 12.015148,
+        "status": "success"
+    },
+    "output_location": [
+        "s3://valuation-model/term/run1/output/results_Model Points_20250130_104707.json"
+    ],
+    "error_message": null
+}
