@@ -32,11 +32,7 @@ def load_assumptions(assumption_url):
 def load_model_points(model_points_url):
     """Load model points from S3"""
     model_point_files = download_and_validate_excel_files(model_points_url)
-    if isinstance(model_point_files, list):
-        if len(model_point_files) == 0:
-            raise ValueError("No valid model point files found")
-        return model_point_files
-    return [model_point_files]  # Return as list for consistent handling
+    return model_point_files
 
 def get_available_models(s3_models_url):
     """Get list of available models from the models directory"""

@@ -1,2 +1,4 @@
 .env
 .pytest_cache
+pytest_cache
+test.ipynb

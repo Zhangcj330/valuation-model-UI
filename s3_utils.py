@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 import tempfile
 import pandas as pd
 import logging
-
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,6 @@ def download_from_s3(s3_url):
         
         try:
             s3_client.head_object(Bucket=bucket_name, Key=key)
-            print("bucket_name", bucket_name)
-            print("key", key)
         except ClientError as e:
             error_code = e.response.get('Error', {}).get('Code', 'Unknown')
             if error_code == '403':
@@ -98,7 +96,7 @@ def download_from_s3(s3_url):
     except Exception as e:
         raise Exception(f"Error downloading from S3: {str(e)}")
 
-def download_excel_files_from_s3(s3_path):
+def download_excel_files_from_s3(s3_path, download_folder = "./download"):
     """
     Download all Excel files from specified S3 path
     
@@ -131,20 +129,28 @@ def download_excel_files_from_s3(s3_path):
         
         if not excel_files:
             raise ValueError(f"No Excel files found in {s3_path}")
+        
+        # Remove the existing download directory if it exists
+        if os.path.exists(download_folder):
+            shutil.rmtree(download_folder)
+        
+        # Ensure the download directory is created
+        os.makedirs(download_folder)
             
         # Download each Excel file
         for file_key in excel_files:
-            temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
-            s3_client.download_file(bucket_name, file_key, temp_file.name)
-            downloaded_files.append((file_key, temp_file.name))
+            local_file_path = os.path.join(download_folder, file_key.split('/')[-1])
+            s3_client.download_file(bucket_name, file_key, local_file_path)
+            file_key
+            downloaded_files.append((file_key, local_file_path))
             
         return downloaded_files
         
     except Exception as e:
-        logger.error(f"Error in download_excel_files_from_s3: {str(e)}")
+        print(f"Error in download_excel_files_from_s3: {str(e)}")
         raise
 
-def get_standardized_column_name(columns, possible_names):
+def get_standardized_column_name(column_list, variations):
     """
     Find a matching column name from a list of possible variations
     
@@ -156,97 +162,90 @@ def get_standardized_column_name(columns, possible_names):
         str: Matching column name if found, None otherwise
     """
     # Convert all names to lowercase for case-insensitive comparison
-    columns_lower = [col.lower().replace(' ', '_') for col in columns]
-    for col, original_col in zip(columns_lower, columns):
-        for possible_name in possible_names:
-            if possible_name.lower() in col:
+    columns_lower = [col.lower().replace(' ', '_') for col in column_list]
+    for col, original_col in zip(columns_lower, column_list):
+        for variations in column_list:
+            if variations.lower() in col:
                 return original_col
     return None
 
 def validate_excel_files(file_paths):
     """
-    Validate downloaded Excel files with flexible column name matching
+    Validate downloaded Excel files with flexible column name matching, returning a dictionary with file_key as keys.
     
     Args:
         file_paths (list): List of tuples containing (file_key, temp_file_path)
     
     Returns:
-        list: List of validated DataFrame objects from Excel files
+        dict: Dictionary with file_key as keys and validated DataFrame as values
     """
-    try:
-        validated_dfs = []
-        
-        # Define column name variations
-        required_column_variations = {
-            'Policy number': [
-                'policy', 'policyid', 'policy_id', 'policy_number', 
-                'policy_no', 'policy_num', 'p_number', 'p_id', 'id'
-            ],
-            'age_at_entry': [
-                'age', 'member_age', 'client_age', 'age_at_entry'
-            ],
-            'sex': [
-                'gender', 'sex', 'member_gender', 'client_gender'
-            ],
-            'policy_term': [
-                'term', 'policy_term', 'coverage_term', 'duration'
-            ]
-        }
-        
-        for file_key, temp_file_path in file_paths:
-            try:
-                df = pd.read_excel(temp_file_path)
-                
-                # Add filename as attribute to DataFrame
-                filename = file_key.split('/')[-1]  # Get just the filename
-                df.filename = filename
-                
-                # Dictionary to store matched column names
-                column_mapping = {}
-                missing_columns = []
-                
-                # Check for each required column
-                for std_name, variations in required_column_variations.items():
-                    matched_col = get_standardized_column_name(df.columns, variations)
-                    if matched_col:
-                        column_mapping[std_name] = matched_col
-                    else:
-                        missing_columns.append(std_name)
-                
-                if missing_columns:
-                    logger.warning(
-                        f"File {file_key} missing required columns: {missing_columns}\n"
-                        f"Available columns: {list(df.columns)}"
-                    )
-                    continue
-                
-                # Rename columns to standardized names
-                df_standardized = df.rename(columns={v: k for k, v in column_mapping.items()})
-                
-                # Additional validation checks can be added here
-                
-                validated_dfs.append(df_standardized)
-                logger.info(f"Successfully validated file: {filename}")
-                logger.info(f"Column mapping used: {column_mapping}")
-                
-            except Exception as e:
-                logger.error(f"Error processing file {file_key}: {str(e)}")
-                continue
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(temp_file_path)
-                except Exception as e:
-                    logger.warning(f"Error deleting temporary file {temp_file_path}: {str(e)}")
-        
-        if not validated_dfs:
-            raise ValueError("No valid Excel files found after validation")
+    validated_files = {}
+    
+    # Define column name variations
+    required_column_variations = {
+        'Policy number': [
+            'policy', 'policyid', 'policy_id', 'policy_number', 
+            'policy_no', 'policy_num', 'p_number', 'p_id', 'id'
+        ],
+        'age_at_entry': [
+            'age', 'member_age', 'client_age', 'age_at_entry'
+        ],
+        'sex': [
+            'gender', 'sex', 'member_gender', 'client_gender'
+        ],
+        'policy_term': [
+            'term', 'policy_term', 'coverage_term', 'duration'
+        ]
+    }
+    
+    for file_key, temp_file_path in file_paths:
+        try:
+            df = pd.read_excel(temp_file_path)
             
-        return validated_dfs
+            # Dictionary to store matched column names
+            column_mapping = {}
+            missing_columns = []
+            
+            # Check for each required column
+            for std_name, variations in required_column_variations.items():
+                matched_col = get_standardized_column_name(df.columns, variations)
+                if matched_col:
+                    column_mapping[std_name] = matched_col
+                else:
+                    missing_columns.append(std_name)
+            
+            if missing_columns:
+                logger.warning(
+                    f"File {file_key} missing required columns: {missing_columns}\n"
+                    f"Available columns: {list(df.columns)}"
+                )
+                continue
+            filename = file_key.split('/')[-1]
+                # Remove the .xlsx extension
+            filename = filename.replace('.xlsx', '')
+            # Rename columns to standardized names
+            df_standardized = df.rename(columns={v: k for k, v in column_mapping.items()})
+            
+            # Add DataFrame to dictionary using file_key
+            validated_files[filename] = df_standardized
+            
+            logger.info(f"Successfully validated file: {file_key.split('/')[-1]}")
+            logger.info(f"Column mapping used: {column_mapping}")
+            
+        except Exception as e:
+            logger.error(f"Error processing file {file_key}: {str(e)}")
+            continue
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_file_path)
+            except Exception as e:
+                logger.warning(f"Error deleting temporary file {temp_file_path}: {str(e)}")
+    
+    if not validated_files:
+        raise ValueError("No valid Excel files found after validation")
         
-    except Exception as e:
-        logger.error(f"Error in validate_excel_files: {str(e)}")
-        raise
+    return validated_files
 
 
 def download_and_validate_excel_files(s3_path):

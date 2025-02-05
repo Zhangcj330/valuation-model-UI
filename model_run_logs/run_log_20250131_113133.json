@@ -1,0 +1,21 @@
+{
+    "run_timestamp": "2025-01-31T11:31:33.984083",
+    "user": "unknown",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run2/model point files/",
+        "valuation_date": "2024-06-30",
+        "projection_period": 30,
+        "product_groups": [
+            "C_TERM"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-01-31T11:31:33.984083",
+        "end_time": "2025-01-31T11:31:36.866506",
+        "duration_seconds": 2.882423,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "'str' object has no attribute 'endsuffix'"
+}

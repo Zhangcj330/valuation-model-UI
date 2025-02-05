@@ -2,7 +2,6 @@ import streamlit as st
 import datetime
 import pandas as pd
 import io
-import os
 
 from model_utils import load_assumptions, load_model_points, initialize_model
 from settings_utils import load_settings, save_settings, validate_settings
@@ -174,9 +173,7 @@ def process_model_run(settings):
             # Download and process input files
             status_text.text("Downloading and processing input files...")
             assumptions = load_assumptions(settings["assumption_table_url"])
-            model_points_list = load_model_points(settings["model_point_files_url"])
-
-            # Calculate total steps
+            model_points_list = load_model_points(settings["model_point_files_url"])            # Calculate total steps
             total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
             current_step = 0
             progress_bar.progress(current_step / total_steps)
@@ -185,11 +182,8 @@ def process_model_run(settings):
             # Process each product/model point file
             for product_idx, product in enumerate(settings["product_groups"], 1):
                 status_text.text(f"Processing {product}... ({product_idx}/{len(settings['product_groups'])})")
-                
                 # Find matching model points file for this product
-                
-                model_points_df = model_points_list[product_idx-1]
-                
+                model_points_df = model_points_list[product]
                 # Initialize and run model
                 model = initialize_model(settings, assumptions, model_points_df)
                 current_step += 1
@@ -203,7 +197,7 @@ def process_model_run(settings):
                     pv_df.to_excel(writer, sheet_name='present_value', index=False)
                 
                 output_filename = f"results_{product}_{start_time}.xlsx"
-                output_path = os.path.join(settings["output_s3_url"].rstrip('/'), output_filename)
+                output_path = f"{settings['output_s3_url'].rstrip('/')}/{output_filename}"
                 output_buffer.seek(0)
                 
                 upload_to_s3(output_buffer.getvalue(), output_path)

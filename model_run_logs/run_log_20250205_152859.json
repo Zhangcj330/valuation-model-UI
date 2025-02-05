@@ -1,0 +1,21 @@
+{
+    "run_timestamp": "2025-02-05T15:28:59.979348",
+    "user": "unknown",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run2/",
+        "valuation_date": "2024-06-30",
+        "projection_period": 30,
+        "product_groups": [
+            "C_TERM"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-02-05T15:28:59.979348",
+        "end_time": "2025-02-05T15:29:04.815271",
+        "duration_seconds": 4.835923,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "[Errno 22] Invalid argument: './download\\\\results_C_TERM_2025-01-30 15:22:00.780621.xlsx.56dc4a4A'"
+}

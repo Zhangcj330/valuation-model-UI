@@ -1,0 +1,21 @@
+{
+    "run_timestamp": "2025-02-05T15:02:29.443754",
+    "user": "unknown",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run2/model point files/",
+        "valuation_date": "2024-06-30",
+        "projection_period": 30,
+        "product_groups": [
+            "C_TERM"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-02-05T15:02:29.443754",
+        "end_time": "2025-02-05T15:02:48.662680",
+        "duration_seconds": 19.218926,
+        "status": "error"
+    },
+    "output_location": null,
+    "error_message": "Error downloading folder from S3: [Errno 13] Permission denied: 'C:\\\\Users\\\\zhang\\\\Dataly\\\\valuation-model-UI\\\\tmp\\\\Model Points.xlsx'"
+}
