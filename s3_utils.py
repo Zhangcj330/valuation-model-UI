@@ -223,11 +223,10 @@ def validate_excel_files(file_paths):
             filename = file_key.split('/')[-1]
                 # Remove the .xlsx extension
             filename = filename.replace('.xlsx', '')
-            # Rename columns to standardized names
-            df_standardized = df.rename(columns={v: k for k, v in column_mapping.items()})
+            # todo: Rename columns to standardized names
             
             # Add DataFrame to dictionary using file_key
-            validated_files[filename] = df_standardized
+            validated_files[filename] = df
             
             logger.info(f"Successfully validated file: {file_key.split('/')[-1]}")
             logger.info(f"Column mapping used: {column_mapping}")

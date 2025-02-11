@@ -173,7 +173,8 @@ def process_model_run(settings):
             # Download and process input files
             status_text.text("Downloading and processing input files...")
             assumptions = load_assumptions(settings["assumption_table_url"])
-            model_points_list = load_model_points(settings["model_point_files_url"])            # Calculate total steps
+            model_points_list = load_model_points(settings["model_point_files_url"])       
+            # Calculate total steps
             total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
             current_step = 0
             progress_bar.progress(current_step / total_steps)
@@ -190,7 +191,6 @@ def process_model_run(settings):
                 progress_bar.progress(current_step / total_steps)
                 pv_df =  model.Results.pv_results(0)
                 analytics_df = model.Results.analytics()
-
                 output_buffer = io.BytesIO()
                 with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
                     analytics_df.to_excel(writer, sheet_name='analytics', index=False)

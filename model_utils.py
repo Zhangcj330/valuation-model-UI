@@ -34,25 +34,6 @@ def load_model_points(model_points_url):
     model_point_files = download_and_validate_excel_files(model_points_url)
     return model_point_files
 
-def get_available_models(s3_models_url):
-    """Get list of available models from the models directory"""
-    try:
-        # Assuming models are in a 'models' directory
-        model_names = get_foldernames_from_s3(s3_models_url)
-        model_dir = Path("models")
-
-        if not model_dir.exists():
-            raise ValueError("Models directory not found")
-            
-        # Get all directories in the models folder
-        models = [d.name for d in model_dir.iterdir() if d.is_dir()]
-        if not models:
-            raise ValueError("No models found in models directory")
-            
-        return sorted(models)  # Return sorted list of model names
-    except Exception as e:
-        logger.error(f"Error getting available models: {str(e)}")
-        raise
 
 def initialize_model(settings, assumptions, model_points_df):
     """Initialize and configure the modelx model"""
@@ -66,8 +47,9 @@ def initialize_model(settings, assumptions, model_points_df):
     model = mx.read_model("./tmp")
     model.Data_Inputs.proj_period = settings["projection_period"]
     model.Data_Inputs.val_date = settings["valuation_date"]
-    model.assumptions = assumptions
-    model.model_point_table = model_points_df
+    for attribute, dataframe in assumptions.items():
+        setattr(model.Data_Inputs, attribute, dataframe)
+    model.Data_Inputs.model_point_table = model_points_df
     return model
 
 def process_all_model_points(settings, assumptions, model_points_list):
