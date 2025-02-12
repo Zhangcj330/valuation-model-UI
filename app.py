@@ -170,28 +170,32 @@ def clear_progress_indicators(progress_bar, status_text, time_text):
     status_text.empty()
     time_text.empty()
 
-def process_single_product(product, product_idx, settings, model_points_list, assumptions, total_products, progress_bar, current_step, total_steps, start_time):
-    """Process a single product and return its results"""
-    status_text = st.empty()
-    status_text.text(f"Processing {product}... ({product_idx}/{total_products})")
-    
+def run_single_model(product, settings, model_points_list, assumptions):
+    """Run model for a single product and return results"""
     # Find matching model points file for this product
     model_points_df = model_points_list[product]
     
     # Initialize and run model
     model = initialize_model(settings, assumptions, model_points_df)
-    current_step += 1
-    progress_bar.progress(current_step / total_steps)
     
     # Generate results
     pv_df = model.Results.pv_results(0)
     analytics_df = model.Results.analytics()
     
+    return {
+        'present_value': pv_df,
+        'analytics': analytics_df,
+        'model_points_count': len(model_points_df),
+        'results_count': len(pv_df)
+    }
+
+def process_model_results(product, model_results, settings, start_time):
+    """Process and save model results for a single product"""
     # Prepare Excel output
     output_buffer = io.BytesIO()
     with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
-        analytics_df.to_excel(writer, sheet_name='analytics', index=False)
-        pv_df.to_excel(writer, sheet_name='present_value', index=False)
+        model_results['analytics'].to_excel(writer, sheet_name='analytics', index=False)
+        model_results['present_value'].to_excel(writer, sheet_name='present_value', index=False)
     
     # Save to S3
     output_filename = f"results_{product}_{start_time}.xlsx"
@@ -201,11 +205,23 @@ def process_single_product(product, product_idx, settings, model_points_list, as
     
     return {
         'output_path': output_path,
-        'results': {
-            'present_value': pv_df,
-            'analytics': analytics_df
-        }
-    }, current_step
+        'results': model_results
+    }
+
+def process_single_product(product, product_idx, settings, model_points_list, assumptions, total_products, progress_bar, current_step, total_steps, start_time):
+    """Process a single product and return its results"""
+    status_text = st.empty()
+    status_text.text(f"Processing {product}... ({product_idx}/{total_products})")
+    
+    # Run model
+    model_results = run_single_model(product, settings, model_points_list, assumptions)
+    current_step += 1
+    progress_bar.progress(current_step / total_steps)
+    
+    # Process and save results
+    processed_results = process_model_results(product, model_results, settings, start_time)
+    
+    return processed_results, current_step
 
 def display_results(results, output_locations, total_time):
     """Display the results of the model run"""
@@ -218,6 +234,25 @@ def display_results(results, output_locations, total_time):
     st.subheader("Model Results")
     for product, product_results in results.items():
         with st.expander(f"Results for {product}"):
+            # Display record count comparison
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    label="Model Points Count", 
+                    value=product_results['model_points_count']
+                )
+            with col2:
+                st.metric(
+                    label="Results Count", 
+                    value=product_results['results_count'],
+                    delta=product_results['results_count'] - product_results['model_points_count']
+                )
+            
+            if product_results['model_points_count'] != product_results['results_count']:
+                st.warning("⚠️ Number of results doesn't match number of model points!")
+            else:
+                st.success("✅ Number of results matches number of model points")
+            
             st.write("Present Value:")
             st.write(product_results['present_value'])
             st.write("Analytics:")

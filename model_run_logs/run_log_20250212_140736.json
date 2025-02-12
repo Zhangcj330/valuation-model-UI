@@ -1,0 +1,25 @@
+{
+    "run_timestamp": "2025-02-12T14:07:36.831985",
+    "user": "user",
+    "inputs": {
+        "assumption_table": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
+        "model_point_files": "s3://valuation-model/term/run2/model point files/",
+        "valuation_date": "2024-06-30",
+        "projection_period": 30,
+        "product_groups": [
+            "C_TERM",
+            "Model Points 2"
+        ]
+    },
+    "execution_details": {
+        "start_time": "2025-02-12T14:07:36.831985",
+        "end_time": "2025-02-12T14:08:19.869302",
+        "duration_seconds": 43.037317,
+        "status": "success"
+    },
+    "output_location": [
+        "s3://valuation-model/term/run2/output/results_C_TERM_2025-02-12 14:07:36.831985.xlsx",
+        "s3://valuation-model/term/run2/output/results_Model Points 2_2025-02-12 14:07:36.831985.xlsx"
+    ],
+    "error_message": null
+}

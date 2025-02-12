@@ -3,7 +3,7 @@
     "assumption_table_url": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
     "models_url": "s3://valuation-model/term/run2/models",
     "model_name": [
-        "Basic_Term_Model_v0.3(I17&RI&AgeLBLPolAnni)"
+        "Basic_Term_Model_v0.4"
     ],
     "model_point_files_url": "s3://valuation-model/term/run2/model point files/",
     "product_groups": [
