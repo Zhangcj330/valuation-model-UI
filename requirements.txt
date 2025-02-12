@@ -6,3 +6,4 @@ numpy
 pytest
 moto>=4.0.0
 openpyxl
+python-dotenv

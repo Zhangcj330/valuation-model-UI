@@ -75,7 +75,6 @@ def run_model_calculations(model, product_groups):
     """Run calculations for each product group"""
     results = {}
     for product in product_groups:
-        model.product = product
         results[product] = {
             'present_value': model.Results.pv_results(0),
             'analytics': model.Results.analytics() 

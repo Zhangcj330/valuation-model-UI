@@ -169,7 +169,7 @@ def age(t):
     if t == 0:
         return age_last_bday()
     else:
-        check = policy_year(t) !=policy_year(t-1)
+        check = policy_year(t) != policy_year(t-1)
         age_adj = np.where(check, 1, 0)
         result = age(t-1) + age_adj
         return result
@@ -342,7 +342,7 @@ def model_point():
 
     Be careful not to accidentally change the original table.
     """
-    return Data_Inputs.model_point_table.iloc[0:1000]
+    return Data_Inputs.model_point_table.iloc[0:10000]
 
 
 def mort_rate(t):

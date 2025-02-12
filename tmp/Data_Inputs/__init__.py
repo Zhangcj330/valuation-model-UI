@@ -11,34 +11,32 @@ _spaces = []
 # ---------------------------------------------------------------------------
 # References
 
-lapse_rate_table = ("IOSpec", 1610101208832, 1610096252608)
+lapse_rate_table = ("IOSpec", 2442755668144, 2442748357520)
 
-inflation_rate_table = ("IOSpec", 1610095696080, 1610100932368)
+inflation_rate_table = ("IOSpec", 2442750156304, 2442755489952)
 
-prem_exp_table = ("IOSpec", 1610101210032, 1610093823408)
+prem_exp_table = ("IOSpec", 2442748354784, 2442755172928)
 
-fixed_exp_table = ("IOSpec", 1610101210896, 1610093822304)
+fixed_exp_table = ("IOSpec", 2442755785536, 2442753556288)
 
-comm_table = ("IOSpec", 1610101366816, 1610093822592)
+comm_table = ("IOSpec", 2442755797344, 2442748361408)
 
-disc_curve = ("IOSpec", 1610103664416, 1610093822736)
+disc_curve = ("IOSpec", 2442758094960, 2442748350992)
 
-mort_table = ("IOSpec", 1610103503024, 1610096259232)
+mort_table = ("IOSpec", 2442757830496, 2442748359584)
 
-trauma_table = ("IOSpec", 1610103504752, 1610096251264)
+trauma_table = ("IOSpec", 2442757831120, 2442750163264)
 
-tpd_table = ("IOSpec", 1610103493232, 1610100746480)
+tpd_table = ("IOSpec", 2442757831840, 2442748355696)
 
-model_point_table = ("IOSpec", 1610105977968, 1610101209072)
+model_point_table = ("IOSpec", 2442756130944, 2442755669392)
 
-prem_rate_level_table = ("IOSpec", 1610101208496, 1610101209792)
+prem_rate_level_table = ("IOSpec", 2442760934096, 2442755669920)
 
-prem_rate_stepped_table = ("IOSpec", 1610108909936, 1610099246368)
+prem_rate_stepped_table = ("IOSpec", 2442760945232, 2442748361744)
 
-RA_table = ("IOSpec", 1610108900336, 1610100605520)
+RA_table = ("IOSpec", 2442760935296, 2442748350320)
 
-RI_prem_rate_level_table = ("IOSpec", 1610108910560, 1610101210320)
+RI_prem_rate_level_table = ("IOSpec", 2442756134544, 2442760935392)
 
-RI_prem_rate_stepped_table = ("IOSpec", 1610108907248, 1610101210560)
-
-val_date = ("Pickle", 1610110386512)
+RI_prem_rate_stepped_table = ("IOSpec", 2442756137376, 2442718066000)

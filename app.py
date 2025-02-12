@@ -157,15 +157,78 @@ def collect_form_inputs(saved_settings):
     
     return settings
 
+def initialize_progress_indicators():
+    """Initialize and return progress tracking components"""
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    time_text = st.empty()
+    return progress_bar, status_text, time_text
+
+def clear_progress_indicators(progress_bar, status_text, time_text):
+    """Clear all progress tracking components"""
+    progress_bar.empty()
+    status_text.empty()
+    time_text.empty()
+
+def process_single_product(product, product_idx, settings, model_points_list, assumptions, total_products, progress_bar, current_step, total_steps, start_time):
+    """Process a single product and return its results"""
+    status_text = st.empty()
+    status_text.text(f"Processing {product}... ({product_idx}/{total_products})")
+    
+    # Find matching model points file for this product
+    model_points_df = model_points_list[product]
+    
+    # Initialize and run model
+    model = initialize_model(settings, assumptions, model_points_df)
+    current_step += 1
+    progress_bar.progress(current_step / total_steps)
+    
+    # Generate results
+    pv_df = model.Results.pv_results(0)
+    analytics_df = model.Results.analytics()
+    
+    # Prepare Excel output
+    output_buffer = io.BytesIO()
+    with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
+        analytics_df.to_excel(writer, sheet_name='analytics', index=False)
+        pv_df.to_excel(writer, sheet_name='present_value', index=False)
+    
+    # Save to S3
+    output_filename = f"results_{product}_{start_time}.xlsx"
+    output_path = f"{settings['output_s3_url'].rstrip('/')}/{output_filename}"
+    output_buffer.seek(0)
+    upload_to_s3(output_buffer.getvalue(), output_path)
+    
+    return {
+        'output_path': output_path,
+        'results': {
+            'present_value': pv_df,
+            'analytics': analytics_df
+        }
+    }, current_step
+
+def display_results(results, output_locations, total_time):
+    """Display the results of the model run"""
+    st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
+    st.write("Results saved to:")
+    for location in output_locations:
+        st.write(f"- {location}")
+    
+    # Display results in a simpler format
+    st.subheader("Model Results")
+    for product, product_results in results.items():
+        with st.expander(f"Results for {product}"):
+            st.write("Present Value:")
+            st.write(product_results['present_value'])
+            st.write("Analytics:")
+            st.write(product_results['analytics'])
+
 def process_model_run(settings):
     """Process the model run and display results"""
     st.success("Settings validated! Ready to run valuation model.")
     
-    # Initialize progress indicators
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    time_text = st.empty()
-    
+    # Initialize progress tracking
+    progress_bar, status_text, time_text = initialize_progress_indicators()
     start_time = datetime.datetime.now()
     
     with st.spinner('Running valuation model...'):
@@ -173,47 +236,36 @@ def process_model_run(settings):
             # Download and process input files
             status_text.text("Downloading and processing input files...")
             assumptions = load_assumptions(settings["assumption_table_url"])
-            model_points_list = load_model_points(settings["model_point_files_url"])       
-            # Calculate total steps
+            model_points_list = load_model_points(settings["model_point_files_url"])
+            
+            # Initialize tracking variables
             total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
             current_step = 0
             progress_bar.progress(current_step / total_steps)
             output_locations = []
             results = {}
-            # Process each product/model point file
+            
+            # Process each product
             for product_idx, product in enumerate(settings["product_groups"], 1):
-                status_text.text(f"Processing {product}... ({product_idx}/{len(settings['product_groups'])})")
-                # Find matching model points file for this product
-                model_points_df = model_points_list[product]
-                # Initialize and run model
-                model = initialize_model(settings, assumptions, model_points_df)
+                product_result, current_step = process_single_product(
+                    product=product,
+                    product_idx=product_idx,
+                    settings=settings,
+                    model_points_list=model_points_list,
+                    assumptions=assumptions,
+                    total_products=len(settings["product_groups"]),
+                    progress_bar=progress_bar,
+                    current_step=current_step,
+                    total_steps=total_steps,
+                    start_time=start_time
+                )
+                
+                output_locations.append(product_result['output_path'])
+                results[product] = product_result['results']
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
-                pv_df =  model.Results.pv_results(0)
-                analytics_df = model.Results.analytics()
-                output_buffer = io.BytesIO()
-                with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
-                    analytics_df.to_excel(writer, sheet_name='analytics', index=False)
-                    pv_df.to_excel(writer, sheet_name='present_value', index=False)
-                
-                output_filename = f"results_{product}_{start_time}.xlsx"
-                output_path = f"{settings['output_s3_url'].rstrip('/')}/{output_filename}"
-                output_buffer.seek(0)
-                
-                upload_to_s3(output_buffer.getvalue(), output_path)
-                # Calculate results
-                results[product] = {
-                    'present_value': pv_df,
-                    'analytics': analytics_df
-                }
-                current_step += 1
-                progress_bar.progress(current_step / total_steps)
-                output_locations.append(output_path)
-
-            # Save results to S3
-            status_text.text("Saving results to S3...")
             
-            
+            # Calculate total time
             end_time = datetime.datetime.now()
             total_time = (end_time - start_time).total_seconds()
             
@@ -226,31 +278,13 @@ def process_model_run(settings):
                 output_location=output_locations
             )
             
-            # Clear progress indicators
-            progress_bar.empty()
-            status_text.empty()
-            time_text.empty()
+            # Clear progress indicators and display results
+            clear_progress_indicators(progress_bar, status_text, time_text)
+            display_results(results, output_locations, total_time)
             
-            # Display results
-            st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
-            st.write("Results saved to:")
-            for location in output_locations:
-                st.write(f"- {location}")
-                
-            # Display results in a simpler format
-            st.subheader("Model Results")
-            for product, product_results in results.items():
-                with st.expander(f"Results for {product}"):
-                    st.write("Present Value:")
-                    st.write(product_results['present_value'])
-                    st.write("Analytics:")
-                    st.write(product_results['analytics'])
-                    
         except Exception as e:
             # Clear progress indicators
-            progress_bar.empty()
-            status_text.empty()
-            time_text.empty()
+            clear_progress_indicators(progress_bar, status_text, time_text)
             
             end_time = datetime.datetime.now()
             # Log failed run
