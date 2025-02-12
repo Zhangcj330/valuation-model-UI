@@ -245,7 +245,6 @@ def display_results(results, output_locations, total_time):
                 st.metric(
                     label="Results Count", 
                     value=product_results['results_count'],
-                    delta=product_results['results_count'] - product_results['model_points_count']
                 )
             
             if product_results['model_points_count'] != product_results['results_count']:
@@ -338,7 +337,9 @@ def main():
     saved_settings = load_settings()
     display_settings_management(saved_settings)
     # Add run history display
-    logger.display_run_history(limit=10)
+    if 'history_page' not in st.session_state:
+        st.session_state['history_page'] = 1
+    logger.display_run_history(page=st.session_state['history_page'])
 
     with st.form("valuation_model_settings"):
         settings = collect_form_inputs(saved_settings)
