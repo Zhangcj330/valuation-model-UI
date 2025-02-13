@@ -1,5 +1,8 @@
 # Enterprise Valuation Model Server
 
+[![CI Pipeline](https://github.com/yourusername/enterprise-valuation-model/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/enterprise-valuation-model/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/yourusername/enterprise-valuation-model/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/enterprise-valuation-model)
+
 A Streamlit-based web application for running enterprise valuation models. This application allows users to configure model settings, process multiple products, and view results through an interactive interface.
 
 ## Features
@@ -51,7 +54,7 @@ pip install -r requirements.txt
    AWS_SECRET_ACCESS_KEY=your_secret_key
    AWS_DEFAULT_REGION=your_region
    ```
-   
+
    Or configure AWS CLI:
    ```bash
    aws configure
