@@ -47,7 +47,9 @@ def collect_form_inputs(saved_settings):
         ),
         "assumption_table_url": st.text_input(
             "Enter S3 URL for assumption table",
-            value=(saved_settings.get("assumption_table_url", "") if saved_settings else ""),
+            value=(
+                saved_settings.get("assumption_table_url", "") if saved_settings else ""
+            ),
             help="Format: s3://bucket-name/path/to/file.xlsx",
         ),
     }
@@ -104,7 +106,11 @@ def collect_form_inputs(saved_settings):
     with col1:
         model_point_url = st.text_input(
             "Enter S3 URL for model point files",
-            value=(saved_settings.get("model_point_files_url", "") if saved_settings else ""),
+            value=(
+                saved_settings.get("model_point_files_url", "")
+                if saved_settings
+                else ""
+            ),
             help="Format: s3://bucket-name/path/",
             key="mp_url_input",
         )
@@ -210,7 +216,9 @@ def process_model_results(product, model_results, settings, start_time):
     output_buffer = io.BytesIO()
     with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
         model_results["analytics"].to_excel(writer, sheet_name="analytics", index=False)
-        model_results["present_value"].to_excel(writer, sheet_name="present_value", index=False)
+        model_results["present_value"].to_excel(
+            writer, sheet_name="present_value", index=False
+        )
 
     # Save to S3
     output_filename = f"results_{product}_{start_time}.xlsx"
@@ -243,7 +251,9 @@ def process_single_product(
     progress_bar.progress(current_step / total_steps)
 
     # Process and save results
-    processed_results = process_model_results(product, model_results, settings, start_time)
+    processed_results = process_model_results(
+        product, model_results, settings, start_time
+    )
 
     return processed_results, current_step
 
@@ -272,7 +282,10 @@ def display_results(results, output_locations, total_time):
                     value=product_results["results_count"],
                 )
 
-            if product_results["model_points_count"] != product_results["results_count"]:
+            if (
+                product_results["model_points_count"]
+                != product_results["results_count"]
+            ):
                 st.warning("⚠️ Number of results doesn't match number of model points!")
             else:
                 st.success("✅ Number of results matches number of model points")

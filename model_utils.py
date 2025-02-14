@@ -24,10 +24,16 @@ def load_assumptions(assumption_url):
         "mort_table": pd.read_excel(assumption_file, sheet_name="mortality"),
         "trauma_table": pd.read_excel(assumption_file, sheet_name="trauma"),
         "tpd_table": pd.read_excel(assumption_file, sheet_name="TPD"),
-        "prem_rate_level_table": pd.read_excel(assumption_file, sheet_name="prem_rate_level"),
-        "prem_rate_stepped_table": pd.read_excel(assumption_file, sheet_name="prem_rate_stepped"),
+        "prem_rate_level_table": pd.read_excel(
+            assumption_file, sheet_name="prem_rate_level"
+        ),
+        "prem_rate_stepped_table": pd.read_excel(
+            assumption_file, sheet_name="prem_rate_stepped"
+        ),
         "RA_table": pd.read_excel(assumption_file, sheet_name="RA"),
-        "RI_prem_rate_level_table": pd.read_excel(assumption_file, sheet_name="RI_prem_rate_level"),
+        "RI_prem_rate_level_table": pd.read_excel(
+            assumption_file, sheet_name="RI_prem_rate_level"
+        ),
         "RI_prem_rate_stepped_table": pd.read_excel(
             assumption_file, sheet_name="RI_prem_rate_stepped"
         ),

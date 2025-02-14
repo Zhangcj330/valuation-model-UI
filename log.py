@@ -62,7 +62,9 @@ class ModelLogger:
         self.run_history.append(log_entry)
 
         # Save log to local file
-        timestamp = datetime.datetime.fromisoformat(log_entry["run_timestamp"].split("+")[0])
+        timestamp = datetime.datetime.fromisoformat(
+            log_entry["run_timestamp"].split("+")[0]
+        )
         log_file = self.log_dir / f"run_log_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         with open(log_file, "w") as f:
             json.dump(log_entry, f, indent=4)
@@ -144,7 +146,11 @@ class ModelLogger:
                     time_str = "Unknown Time"
 
                 # Status emoji
-                status_color = "🟢" if log_entry["execution_details"]["status"] == "success" else "🔴"
+                status_color = (
+                    "🟢"
+                    if log_entry["execution_details"]["status"] == "success"
+                    else "🔴"
+                )
 
                 # Display header with date and status
                 col1, col2 = st.columns([2, 1])
@@ -152,11 +158,15 @@ class ModelLogger:
                     st.write(f"🕒 {date_str} {time_str}")
                     st.write(f"👤 {log_entry.get('user', 'unknown_user')}")
                 with col2:
-                    st.write(f"{status_color} {log_entry['execution_details']['status']}")
+                    st.write(
+                        f"{status_color} {log_entry['execution_details']['status']}"
+                    )
 
                 with st.expander("View Details"):
                     # Format duration from seconds
-                    duration_seconds = log_entry["execution_details"].get("duration_seconds")
+                    duration_seconds = log_entry["execution_details"].get(
+                        "duration_seconds"
+                    )
                     duration_str = (
                         self.format_duration(duration_seconds)
                         if duration_seconds is not None
@@ -208,7 +218,9 @@ class ModelLogger:
         """Clear logs older than specified days"""
         cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days_to_keep)
         for log_file in self.log_dir.glob("*.json"):
-            file_date = datetime.datetime.strptime(log_file.stem.split("_")[2], "%Y%m%d")
+            file_date = datetime.datetime.strptime(
+                log_file.stem.split("_")[2], "%Y%m%d"
+            )
             if file_date < cutoff_date:
                 log_file.unlink()
 

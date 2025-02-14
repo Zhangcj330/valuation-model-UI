@@ -355,7 +355,9 @@ def test_create_run_log_with_duration(logger):
 
     assert "execution_details" in log_entry
     assert "duration_seconds" in log_entry["execution_details"]
-    assert log_entry["execution_details"]["duration_seconds"] == 150.0  # 2m30s = 150 seconds
+    assert (
+        log_entry["execution_details"]["duration_seconds"] == 150.0
+    )  # 2m30s = 150 seconds
 
 
 def test_create_run_log_with_non_serializable(logger):

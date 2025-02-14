@@ -66,7 +66,9 @@ def validate_settings(settings, validate_required=False):
             if isinstance(settings["model_name"], list):
                 if len(settings["model_name"]) != 1:
                     raise ValueError("Please select exactly one model")
-                settings["model_name"] = settings["model_name"][0]  # Convert list to single value
+                settings["model_name"] = settings["model_name"][
+                    0
+                ]  # Convert list to single value
 
             # Validate S3 URLs
             s3_urls = [

@@ -243,7 +243,9 @@ def validate_excel_files(file_paths):
             try:
                 os.unlink(temp_file_path)
             except Exception as e:
-                logger.warning(f"Error deleting temporary file {temp_file_path}: {str(e)}")
+                logger.warning(
+                    f"Error deleting temporary file {temp_file_path}: {str(e)}"
+                )
 
     if not validated_files:
         raise ValueError("No valid Excel files found after validation")
@@ -372,7 +374,9 @@ def get_foldernames_from_s3(s3_path):
         s3_client = get_s3_client()
 
         # List objects with delimiter to get folders
-        response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix, Delimiter="/")
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name, Prefix=prefix, Delimiter="/"
+        )
 
         folders = []
 
