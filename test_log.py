@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from log import ModelLogger
 import json
 import shutil
-import streamlit as st
 import pandas as pd
 import numpy as np
 
@@ -129,20 +128,24 @@ class TestModelLogger:
         assert all(entry in logger.run_history for entry in test_entries)
 
     def test_get_run_history(self, logger, sample_log_entry):
-        """Test retrieving run history"""
+        # Get history and check items list is empty
+        history = logger.get_run_history()
+        assert len(history["items"]) == 0  # Check items list specifically
+
         # Add multiple entries
         for i in range(5):
             entry = sample_log_entry.copy()
             entry["run_timestamp"] = f"2024-01-01T{12+i}:00:00"
             logger.add_log_entry(entry)
 
-        # Test without limit
+        # Test without pagination
         history = logger.get_run_history()
-        assert len(history) == 5
+        assert len(history["items"]) == 5
 
-        # Test with limit
-        limited_history = logger.get_run_history(limit=3)
-        assert len(limited_history) == 3
+        # Test with pagination
+        history = logger.get_run_history(page=1, items_per_page=3)
+        assert len(history["items"]) == 3
+        assert history["total_pages"] == 2
 
     def test_format_duration(self, logger):
         """Test duration formatting"""
@@ -156,32 +159,6 @@ class TestModelLogger:
 
         for seconds, expected in test_cases:
             assert logger.format_duration(seconds) == expected
-
-    def test_display_run_history(self, logger, sample_log_entry, monkeypatch):
-        """Test displaying run history"""
-        # Mock streamlit components
-        mock_expander = type(
-            "MockExpander",
-            (),
-            {"__enter__": lambda x: None, "__exit__": lambda x, y, z, w: None},
-        )
-
-        mock_column = type(
-            "MockColumn",
-            (),
-            {"__enter__": lambda x: None, "__exit__": lambda x, y, z, w: None},
-        )
-
-        monkeypatch.setattr(st, "sidebar", mock_expander())
-        monkeypatch.setattr(st, "subheader", lambda x: None)
-        monkeypatch.setattr(st, "write", lambda x: None)
-        monkeypatch.setattr(st, "columns", lambda x: [mock_column(), mock_column()])
-        monkeypatch.setattr(st, "expander", lambda x: mock_expander())
-
-        # Add some entries and test display
-        logger.add_log_entry(sample_log_entry)
-        logger.display_run_history()
-        logger.display_run_history(limit=1)
 
     def test_error_handling(self, logger, sample_settings):
         """Test error handling in log creation"""
@@ -203,7 +180,7 @@ class TestModelLogger:
 def test_create_run_log(logger):
     """Test basic log creation"""
     settings = {
-        "valuation_date": "2024-01-01",
+        "valuation_date": datetime.strptime("2024-06-30", "%Y-%m-%d").date(),
         "product_groups": ["test_product"],
         "projection_period": 10,
     }
@@ -261,7 +238,7 @@ def test_load_existing_logs(tmp_path):
 
 def test_create_run_log_duration_formatting(logger):
     settings = {
-        "valuation_date": "2024-01-01",
+        "valuation_date": datetime.strptime("2024-06-30", "%Y-%m-%d").date(),
         "product_groups": ["test"],
         "projection_period": 10,
         "assumption_table_url": "s3://test/assumptions.xlsx",
