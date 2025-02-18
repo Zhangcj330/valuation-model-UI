@@ -129,100 +129,95 @@ class ModelLogger:
         """Display run history in Streamlit sidebar with pagination"""
         history_data = self.get_run_history(page, items_per_page)
 
-        with st.sidebar:
-            st.subheader("Model Run History")
+        st.subheader("Model Run History")
 
-            if not self.run_history:
-                st.write("No run history available")
-                return
+        if not self.run_history:
+            st.write("No run history available")
+            return
 
-            # Display history items
-            for log_entry in history_data["items"]:
-                try:
-                    # Parse ISO format timestamp
-                    timestamp = datetime.datetime.fromisoformat(
-                        log_entry["run_timestamp"].replace("Z", "+00:00")
-                    )
-                    date_str = timestamp.strftime("%b %d, %Y")
-                    time_str = timestamp.strftime("%I:%M %p")
-                except (ValueError, KeyError) as e:
-                    print(f"Error parsing timestamp: {e}")
-                    date_str = "Unknown Date"
-                    time_str = "Unknown Time"
-
-                # Status emoji
-                status_color = (
-                    "🟢"
-                    if log_entry["execution_details"]["status"] == "success"
-                    else "🔴"
+        # Display history items
+        for log_entry in history_data["items"]:
+            try:
+                # Parse ISO format timestamp
+                timestamp = datetime.datetime.fromisoformat(
+                    log_entry["run_timestamp"].replace("Z", "+00:00")
                 )
+                date_str = timestamp.strftime("%b %d, %Y")
+                time_str = timestamp.strftime("%I:%M %p")
+            except (ValueError, KeyError) as e:
+                print(f"Error parsing timestamp: {e}")
+                date_str = "Unknown Date"
+                time_str = "Unknown Time"
 
-                # Display header with date and status
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.write(f"🕒 {date_str} {time_str}")
-                    # Display user info
-                    user_info = log_entry.get("user", {})
-                    if isinstance(user_info, dict):
-                        st.write(f"👤 {user_info.get('name', 'unknown')}")
-                    else:
-                        st.write(f"👤 {user_info}")
-                with col2:
-                    st.write(
-                        f"{status_color} {log_entry['execution_details']['status']}"
-                    )
+            # Status emoji
+            status_color = (
+                "🟢" if log_entry["execution_details"]["status"] == "success" else "🔴"
+            )
 
-                with st.expander("View Details"):
-                    # Format duration from seconds
-                    duration_seconds = log_entry["execution_details"].get(
-                        "duration_seconds"
-                    )
-                    duration_str = (
-                        self.format_duration(duration_seconds)
-                        if duration_seconds is not None
-                        else "N/A"
-                    )
-                    st.write("**Duration:** ⏱️ " + duration_str)
-
-                    st.write("**Settings:**")
-                    st.json(log_entry["inputs"])
-
-                    if log_entry.get("output_location"):
-                        st.write(f"**Output:** 📁 {log_entry['output_location']}")
-
-                    if log_entry.get("error_message"):
-                        st.error(f"Error: {log_entry['error_message']}")
-
-                st.markdown("<hr style='margin: 10px 0px'>", unsafe_allow_html=True)
-
-            # Display pagination controls
-            col1, col2, col3 = st.columns([1, 2, 1])
+            # Display header with date and status
+            col1, col2 = st.columns([2, 1])
             with col1:
-                if history_data["has_previous"]:
-                    st.markdown(
-                        "<div style='text-align: center; padding-top: 5px'>",
-                        unsafe_allow_html=True,
-                    )
-                    if st.button("←"):
-                        st.session_state["history_page"] = page - 1
-                        st.rerun()
-                    st.markdown("</div>", unsafe_allow_html=True)
+                st.write(f"🕒 {date_str} {time_str}")
+                # Display user info
+                user_info = log_entry.get("user", {})
+                if isinstance(user_info, dict):
+                    st.write(f"👤 {user_info.get('name', 'unknown')}")
+                else:
+                    st.write(f"👤 {user_info}")
             with col2:
+                st.write(f"{status_color} {log_entry['execution_details']['status']}")
+
+            with st.expander("View Details"):
+                # Format duration from seconds
+                duration_seconds = log_entry["execution_details"].get(
+                    "duration_seconds"
+                )
+                duration_str = (
+                    self.format_duration(duration_seconds)
+                    if duration_seconds is not None
+                    else "N/A"
+                )
+                st.write("**Duration:** ⏱️ " + duration_str)
+
+                st.write("**Settings:**")
+                st.json(log_entry["inputs"])
+
+                if log_entry.get("output_location"):
+                    st.write(f"**Output:** 📁 {log_entry['output_location']}")
+
+                if log_entry.get("error_message"):
+                    st.error(f"Error: {log_entry['error_message']}")
+
+            st.markdown("<hr style='margin: 10px 0px'>", unsafe_allow_html=True)
+
+        # Display pagination controls
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col1:
+            if history_data["has_previous"]:
                 st.markdown(
-                    "<div style='text-align: center; margin-top: 24px'>Page "
-                    f"{page} of {history_data['total_pages']}</div>",
+                    "<div style='text-align: center; padding-top: 5px'>",
                     unsafe_allow_html=True,
                 )
-            with col3:
-                if history_data["has_next"]:
-                    st.markdown(
-                        "<div style='text-align: center; padding-top: 5px'>",
-                        unsafe_allow_html=True,
-                    )
-                    if st.button("→"):
-                        st.session_state["history_page"] = page + 1
-                        st.rerun()
-                    st.markdown("</div>", unsafe_allow_html=True)
+                if st.button("←"):
+                    st.session_state["history_page"] = page - 1
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(
+                "<div style='text-align: center; margin-top: 24px'>Page "
+                f"{page} of {history_data['total_pages']}</div>",
+                unsafe_allow_html=True,
+            )
+        with col3:
+            if history_data["has_next"]:
+                st.markdown(
+                    "<div style='text-align: center; padding-top: 5px'>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("→"):
+                    st.session_state["history_page"] = page + 1
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
 
     def clear_old_logs(self, days_to_keep=30):
         """Clear logs older than specified days"""

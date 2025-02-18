@@ -96,14 +96,62 @@ def display_login():
 
 def display_settings_management(saved_settings):
     """Display the settings management section"""
-    with st.expander("Settings Management"):
-        st.info("You can save your current settings or load previously settings.")
-        if saved_settings and st.button("Load Saved Settings"):
-            st.session_state.update(saved_settings)
-            st.success("Settings loaded successfully!")
+
+    st.info("You can save your current settings or load previously saved settings.")
+
+    url_settings = {}
+
+    assumption_table_url = st.text_input(
+        "Enter S3 URL for assumption table",
+        value=(
+            saved_settings.get("assumption_table_url", "") if saved_settings else ""
+        ),
+        help="Format: s3://bucket-name/path/to/file.xlsx",
+    )
+    url_settings["assumption_table_url"] = assumption_table_url
+
+    models_url = st.text_input(
+        "Enter S3 URL for models",
+        value=(saved_settings.get("models_url", "") if saved_settings else ""),
+        help="Format: s3://bucket-name/path/",
+        key="models_url_input",
+    )
+    url_settings["models_url"] = models_url
+
+    model_point_url = st.text_input(
+        "Enter S3 URL for model point files",
+        value=(
+            saved_settings.get("model_point_files_url", "") if saved_settings else ""
+        ),
+        help="Format: s3://bucket-name/path/",
+        key="mp_url_input",
+    )
+
+    url_settings["model_point_files_url"] = model_point_url
+
+    url_settings["output_s3_url"] = st.text_input(
+        "Enter S3 URL for storing results",
+        value=(saved_settings.get("output_s3_url", "") if saved_settings else ""),
+        help="Format: s3://bucket-name/path/to/output/folder/",
+    )
+
+    # Form buttons
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col1:
+        Load_button = st.button("Load Saved Settings")
+    with col3:
+        save_button = st.button("Save Settings")
+
+    if Load_button:
+        st.session_state.update(saved_settings)
+        st.success("Settings loaded successfully!")
+    if save_button:
+        save_settings(url_settings)
+        st.success("Settings saved successfully!")
+    return url_settings
 
 
-def collect_form_inputs(saved_settings):
+def collect_S3_inputs(saved_settings):
     """Collect all form inputs and return settings dict"""
     default_date = datetime.date.today()
     if saved_settings and "valuation_date" in saved_settings:
@@ -122,41 +170,23 @@ def collect_form_inputs(saved_settings):
             "Valuation Date",
             value=default_date,
             help="Select the valuation date for the valuation model",
-        ),
-        "assumption_table_url": st.text_input(
-            "Enter S3 URL for assumption table",
-            value=(
-                saved_settings.get("assumption_table_url", "") if saved_settings else ""
-            ),
-            help="Format: s3://bucket-name/path/to/file.xlsx",
-        ),
-    }
-    # Create a container for models URL and confirmation
-    col1, col2 = st.columns([3, 1], gap="small", vertical_alignment="bottom")
-
-    with col1:
-        models_url = st.text_input(
-            "Enter S3 URL for models",
-            value=(saved_settings.get("models_url", "") if saved_settings else ""),
-            help="Format: s3://bucket-name/path/",
-            key="models_url_input",
         )
-    with col2:
-        confirm_button_models = st.form_submit_button("Check Models")
+    }
+    settings["assumption_table_url"] = saved_settings["assumption_table_url"]
+    settings["models_url"] = saved_settings["models_url"]
+    settings["output_s3_url"] = saved_settings["output_s3_url"]
+    settings["assumption_table_url"] = saved_settings["assumption_table_url"]
 
-    settings["models_url"] = models_url
-
-    # Handle URL confirmation and file listing
-    if confirm_button_models and models_url:
-        try:
-            available_models = get_foldernames_from_s3(models_url)
-            if available_models:
-                st.session_state["available_models"] = available_models
-            else:
-                st.session_state["available_models"] = []
-        except Exception as e:
-            st.error(f"Error accessing S3 path: {str(e)}")
+    models_url = saved_settings["models_url"]
+    try:
+        available_models = get_foldernames_from_s3(models_url)
+        if available_models:
+            st.session_state["available_models"] = available_models
+        else:
             st.session_state["available_models"] = []
+    except Exception as e:
+        st.error(f"Error accessing S3 path: {str(e)}")
+        st.session_state["available_models"] = []
 
     # Product Groups selection
     available_models = st.session_state.get("available_models", [])
@@ -178,36 +208,19 @@ def collect_form_inputs(saved_settings):
 
     settings["model_name"] = selected_models
 
-    # Create a container for model point URL and confirmation
-    col1, col2 = st.columns([3, 1], gap="small", vertical_alignment="bottom")
-
-    with col1:
-        model_point_url = st.text_input(
-            "Enter S3 URL for model point files",
-            value=(
-                saved_settings.get("model_point_files_url", "")
-                if saved_settings
-                else ""
-            ),
-            help="Format: s3://bucket-name/path/",
-            key="mp_url_input",
-        )
-    with col2:
-        confirm_button = st.form_submit_button("Confirm URL")
-
+    model_point_url = saved_settings["model_point_files_url"]
+    # 设置 model_point_files_url
     settings["model_point_files_url"] = model_point_url
-
     # Handle URL confirmation and file listing
-    if confirm_button and model_point_url:
-        try:
-            available_products = get_excel_filenames_from_s3(model_point_url)
-            if available_products:
-                st.session_state["available_products"] = available_products
-            else:
-                st.session_state["available_products"] = []
-        except Exception as e:
-            st.error(f"Error accessing S3 path: {str(e)}")
+    try:
+        available_products = get_excel_filenames_from_s3(model_point_url)
+        if available_products:
+            st.session_state["available_products"] = available_products
+        else:
             st.session_state["available_products"] = []
+    except Exception as e:
+        st.error(f"Error accessing S3 path: {str(e)}")
+        st.session_state["available_products"] = []
 
     # Product Groups selection
     available_products = st.session_state.get("available_products", [])
@@ -244,13 +257,13 @@ def collect_form_inputs(saved_settings):
         help="Enter the number of years to project",
     )
 
-    settings["output_s3_url"] = st.text_input(
-        "Enter S3 URL for storing results",
-        value=(saved_settings.get("output_s3_url", "") if saved_settings else ""),
-        help="Format: s3://bucket-name/path/to/output/folder/",
-    )
-
     return settings
+
+
+def collect_sharepoint_inputs(saved_settings) -> dict:
+    placeholder = st.empty()
+    placeholder.text("Sharepoint inputs not implemented yet")
+    return {}
 
 
 def initialize_progress_indicators():
@@ -456,46 +469,68 @@ def main():
         display_login()
         return
 
-    # Display user info in sidebar
     with st.sidebar:
         user = st.session_state.user
         st.write(f"Welcome, {user.get('displayName', 'User')}!")
-        if st.button("Logout"):
+        if st.button("Logout", key="logout_button"):
             st.session_state.user = None
             st.session_state.token = None
             st.rerun()
 
-    # Original app content
-    st.title("Enterprise Valuation Model Settings")
+    st.title("Enterprise Valuation Model")
 
-    saved_settings = load_settings()
-    display_settings_management(saved_settings)
+    # Create main tabs
+    inputs_tab, results_tab, history_tab = st.tabs(
+        ["Model Inputs", "Results", "Run History"]
+    )
 
-    if "history_page" not in st.session_state:
-        st.session_state["history_page"] = 1
-    logger.display_run_history(page=st.session_state["history_page"])
+    # Inputs tab
+    with inputs_tab:
+        # Settings management
+        saved_settings = load_settings()
+        with st.expander("Settings Management"):
+            # Storage configuration section
+            st.subheader("Storage Configuration")
+            storage_type = st.radio(
+                "Select Storage Type", options=["S3", "SharePoint"], horizontal=True
+            )
+            # File selection based on storage type
+            if storage_type == "S3":
+                url_settings = display_settings_management(saved_settings)
+            else:
+                url_settings = display_settings_management(saved_settings)
 
-    with st.form("valuation_model_settings"):
-        settings = collect_form_inputs(saved_settings)
+        # Create main form for inputs
+        if storage_type == "S3":
+            settings = collect_S3_inputs(url_settings)
+        else:
+            settings = collect_sharepoint_inputs(saved_settings)
 
-        col1, col2 = st.columns(2)
+        # Form buttons
+        col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            submitted = st.form_submit_button("Run valuation Model")
-        with col2:
-            save_button = st.form_submit_button("Save Settings")
+            submitted = st.button("Run Model")
 
-        if submitted or save_button:
-            try:
-                if submitted:
-                    # Full validation when running the model
-                    validate_settings(settings, validate_required=True)
-                    process_model_run(settings)
-                else:
-                    save_settings(settings)
-                    st.success("Settings saved successfully!")
+        # Handle form submission
 
-            except ValueError as e:
-                st.error(str(e))
+        if submitted:
+            validate_settings(settings, validate_required=True)
+            process_model_run(settings)
+
+    # Results tab
+    with results_tab:
+        st.subheader("Model Results")
+        if "latest_results" in st.session_state:
+            display_results(st.session_state.latest_results)
+        else:
+            st.info("Run a model to see results here")
+
+    # Run History tab
+    with history_tab:
+        st.subheader("Run History")
+        if "history_page" not in st.session_state:
+            st.session_state["history_page"] = 1
+        logger.display_run_history(page=st.session_state["history_page"])
 
 
 if __name__ == "__main__":
