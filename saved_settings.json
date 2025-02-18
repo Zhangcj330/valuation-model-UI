@@ -2,9 +2,13 @@
     "valuation_date": "2024-06-30",
     "assumption_table_url": "s3://valuation-model/term/run2/Assumptions/Assumptions.xlsx",
     "models_url": "s3://valuation-model/term/run2/models",
-    "model_name": ["Basic_Term_Model_v0.4"],
+    "model_name": [
+        "Basic_Term_Model_v0.4"
+    ],
     "model_point_files_url": "s3://valuation-model/term/run2/model point files/",
-    "product_groups": ["C_TERM"],
+    "product_groups": [
+        "C_TERM"
+    ],
     "projection_period": 30,
-    "output_s3_url": "s3://valuation-model/term/run2/output",
+    "output_s3_url": "s3://valuation-model/term/run2/output"
 }

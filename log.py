@@ -31,9 +31,14 @@ class ModelLogger:
         """Create a log entry for the model run"""
         duration = (end_time - start_time).total_seconds()
 
+        # Get user info from session state
+        user_info = st.session_state.get("user", {})
+        user_name = user_info.get("displayName", "unknown")
+        user_email = user_info.get("mail", "unknown")
+
         log_entry = {
             "run_timestamp": start_time.isoformat(),
-            "user": os.getenv("USER", "unknown"),
+            "user": {"name": user_name, "email": user_email},
             "inputs": {
                 "assumption_table": settings.get("assumption_table_url", ""),
                 "model_point_files": settings.get("model_point_files_url", ""),
@@ -156,7 +161,12 @@ class ModelLogger:
                 col1, col2 = st.columns([2, 1])
                 with col1:
                     st.write(f"🕒 {date_str} {time_str}")
-                    st.write(f"👤 {log_entry.get('user', 'unknown_user')}")
+                    # Display user info
+                    user_info = log_entry.get("user", {})
+                    if isinstance(user_info, dict):
+                        st.write(f"👤 {user_info.get('name', 'unknown')}")
+                    else:
+                        st.write(f"👤 {user_info}")
                 with col2:
                     st.write(
                         f"{status_color} {log_entry['execution_details']['status']}"

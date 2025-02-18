@@ -2,6 +2,9 @@ import streamlit as st
 import datetime
 import pandas as pd
 import io
+import msal
+import requests
+import app_config
 
 from model_utils import load_assumptions, load_model_points, initialize_model
 from settings_utils import load_settings, save_settings, validate_settings
@@ -14,6 +17,81 @@ from s3_utils import (
 
 # Initialize the logger
 logger = ModelLogger()
+
+# Initialize session state for authentication
+if "user" not in st.session_state:
+    st.session_state.user = None
+if "token" not in st.session_state:
+    st.session_state.token = None
+
+# Initialize MSAL application
+msal_app = msal.ConfidentialClientApplication(
+    app_config.CLIENT_ID,
+    authority=app_config.AUTHORITY,
+    client_credential=app_config.CLIENT_SECRET,
+)
+
+
+def get_auth_url() -> str:
+    """Generate Microsoft login URL"""
+    return msal_app.get_authorization_request_url(
+        scopes=app_config.SCOPE,
+        redirect_uri=app_config.REDIRECT_URI,
+        state=st.session_state.get("state", ""),
+        prompt="select_account",
+    )
+
+
+def authenticate_user():
+    """Handle user authentication"""
+    # Check for authentication code in URL parameters
+    code = st.query_params.get("code")
+
+    if code and not st.session_state.user:
+        # Process authentication code
+        result = msal_app.acquire_token_by_authorization_code(
+            code=code, scopes=app_config.SCOPE, redirect_uri=app_config.REDIRECT_URI
+        )
+        if "error" in result:
+            st.error(
+                f"Authentication error: {result.get('error_description', 'Unknown error')}"
+            )
+            return False
+
+        st.session_state.token = result
+        # Get user info
+        headers = {"Authorization": f'Bearer {result["access_token"]}'}
+        response = requests.get("https://graph.microsoft.com/v1.0/me", headers=headers)
+        if response.status_code == 200:
+            st.session_state.user = response.json()
+            st.query_params.clear()
+            return True
+
+    return bool(st.session_state.user)
+
+
+def display_login():
+    """Display login interface"""
+    st.title("Enterprise Valuation Model")
+    st.write("Please sign in with your Microsoft account to continue")
+    login_url = get_auth_url()
+    st.markdown(
+        f"""
+        <a href="{login_url}" target="_self">
+            <button style="
+                background-color: #2f7feb;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;">
+                Sign in with Microsoft
+            </button>
+        </a>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def display_settings_management(saved_settings):
@@ -372,11 +450,27 @@ def process_model_run(settings):
 
 
 def main():
-    st.title("Enterprise valuation Model Settings")
+    """Main application function"""
+    # Check authentication
+    if not authenticate_user():
+        display_login()
+        return
+
+    # Display user info in sidebar
+    with st.sidebar:
+        user = st.session_state.user
+        st.write(f"Welcome, {user.get('displayName', 'User')}!")
+        if st.button("Logout"):
+            st.session_state.user = None
+            st.session_state.token = None
+            st.rerun()
+
+    # Original app content
+    st.title("Enterprise Valuation Model Settings")
 
     saved_settings = load_settings()
     display_settings_management(saved_settings)
-    # Add run history display
+
     if "history_page" not in st.session_state:
         st.session_state["history_page"] = 1
     logger.display_run_history(page=st.session_state["history_page"])

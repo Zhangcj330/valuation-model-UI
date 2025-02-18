@@ -1,29 +1,54 @@
 import json
 from pathlib import Path
+import streamlit as st
 import datetime
+
+SETTINGS_FILE = "saved_settings.json"
 
 
 def load_settings():
-    """Load saved settings from a JSON file"""
-    settings_file = Path("saved_settings.json")
-    if not settings_file.exists():
-        return None
+    """Load saved settings from file"""
+    try:
+        settings_path = Path(SETTINGS_FILE)
+        if not settings_path.exists():
+            return {}
 
-    with open(settings_file, "r") as f:
-        settings = json.load(f)
-        if isinstance(settings.get("valuation_date"), str):
-            settings["valuation_date"] = datetime.datetime.strptime(
-                settings["valuation_date"], "%Y-%m-%d"
-            ).date()
-        return settings
+        with open(settings_path, "r") as f:
+            try:
+                settings = json.load(f)
+                if isinstance(settings.get("valuation_date"), str):
+                    settings["valuation_date"] = datetime.datetime.strptime(
+                        settings["valuation_date"], "%Y-%m-%d"
+                    ).date()
+                return settings
+            except json.JSONDecodeError:
+                # 如果JSON解析失败，返回空字典
+                return {}
+
+    except Exception as e:
+        st.warning(f"Error loading settings: {str(e)}")
+        return {}
 
 
 def save_settings(settings):
-    """Save settings to a JSON file"""
-    settings_file = Path("saved_settings.json")
-    settings["valuation_date"] = settings["valuation_date"].isoformat()
-    with open(settings_file, "w") as f:
-        json.dump(settings, f, indent=4)
+    """Save settings to file"""
+    try:
+        # 确保所有值都是JSON可序列化的
+        serializable_settings = {}
+        for key, value in settings.items():
+            if hasattr(value, "isoformat"):  # 处理日期对象
+                serializable_settings[key] = value.isoformat()
+            elif isinstance(value, (list, dict, str, int, float, bool, type(None))):
+                serializable_settings[key] = value
+            else:
+                serializable_settings[key] = str(value)
+
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(serializable_settings, f, indent=4)
+
+    except Exception as e:
+        st.error(f"Error saving settings: {str(e)}")
+        raise
 
 
 def validate_settings(settings, validate_required=False):
