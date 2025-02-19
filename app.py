@@ -95,7 +95,7 @@ def display_settings_management(saved_settings):
     """Display the settings management section"""
     st.info("You can save your current settings or load previously saved settings.")
 
-    storage_type = st.session_state.get("storage_type", "S3")
+    storage_type = st.session_state.get("storage_type", "SharePoint")
     settings = {}
 
     # Preserve all settings regardless of storage type
@@ -198,7 +198,7 @@ def collect_S3_inputs(saved_settings):
         st.error(f"Error accessing S3 path: {str(e)}")
         st.session_state["available_models"] = []
 
-    # Product Groups selection
+    # Model Point Files selection
     available_models = st.session_state.get("available_models", [])
     if available_models:
         selected_models = st.multiselect(
@@ -211,7 +211,7 @@ def collect_S3_inputs(saved_settings):
     else:
         st.selectbox(
             "Model selection",
-            options=available_models,
+            (available_models),
             help="Confirm model points files URL to show the available models",
         )
         selected_models = []
@@ -229,7 +229,7 @@ def collect_S3_inputs(saved_settings):
         st.error(f"Error accessing S3 path: {str(e)}")
         st.session_state["available_products"] = []
 
-    # Product Groups selection
+    # Model Point Files selection
     available_products = st.session_state.get("available_products", [])
     if available_products:
         default_products = []
@@ -239,15 +239,15 @@ def collect_S3_inputs(saved_settings):
             ]
 
         selected_products = st.multiselect(
-            "Product Groups",
+            "Model Point Files",
             options=available_products,
             default=default_products,
-            help="Select product groups to process",
-            placeholder="Please select at least one product group",
+            help="Select model point files to process",
+            placeholder="Please select at least one model point files",
         )
     else:
         st.multiselect(
-            "Product Groups",
+            "Model Point Files",
             options=available_products,
             help="Confirm model points files URL to show the available products",
         )
@@ -340,7 +340,7 @@ def collect_sharepoint_inputs(saved_settings) -> dict:
         st.error(f"Error accessing SharePoint: {str(e)}")
         st.session_state["available_products"] = []
 
-    # Product Groups selection
+    # Model Point Files selection
     available_products = st.session_state.get("available_products", [])
     if available_products:
         default_products = []
@@ -350,11 +350,11 @@ def collect_sharepoint_inputs(saved_settings) -> dict:
             ]
 
         selected_products = st.multiselect(
-            "Product Groups",
+            "Model Point Files",
             options=available_products,
             default=default_products,
-            help="Select product groups to process",
-            placeholder="Please select at least one product group",
+            help="Select model point files to process",
+            placeholder="Please select at least one model point file",
         )
     else:
         st.warning(
@@ -446,7 +446,6 @@ def display_results(results):
     """Display the results of the model run"""
 
     # Display results in a simpler format
-    st.subheader("Model Results")
     for product, product_results in results.items():
         with st.expander(f"Results for {product}"):
             # Display record count comparison
@@ -487,7 +486,9 @@ def process_model_run(settings):
     with st.spinner("Running valuation model..."):
         try:
             # Get appropriate model handler
-            handler = get_model_handler(st.session_state.get("storage_type", "S3"))
+            handler = get_model_handler(
+                st.session_state.get("storage_type", "SharePoint")
+            )
             # Download and process input files
             status_text.text("Downloading and processing input files...")
             assumptions = handler.download_assumptions(settings["assumption_url"])
@@ -544,9 +545,11 @@ def process_model_run(settings):
             clear_progress_indicators(progress_bar, status_text, time_text)
             st.session_state["results"] = results
             st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
-            st.write("Results saved to:")
-            output_location = settings["results_url"].replace("%20", " ")
-            st.write(f"-  {output_location}")
+            if st.session_state.get("storage_type") == "SharePoint":
+                output_file_url = handler.get_file_url(settings["results_url"])
+                st.write("Results saved to URL: %s" % output_file_url)
+            else:
+                st.write("Results saved to: %s" % settings["results_url"])
 
         except Exception as e:
             # Clear progress indicators
@@ -593,7 +596,7 @@ def main():
         with st.expander("Settings Management"):
             # Storage configuration sectio
             storage_type = st.radio(
-                "Select Storage Type", options=["S3", "SharePoint"], horizontal=True
+                "Select Storage Type", options=["SharePoint", "S3"], horizontal=True
             )
             # File selection based on storage type
             st.session_state["storage_type"] = storage_type
@@ -619,7 +622,7 @@ def main():
     # Results tab
     with results_tab:
         st.subheader("Model Results")
-        if "results" not in st.session_state or "total_time" not in st.session_state:
+        if "results" not in st.session_state:
             st.info("Run model to display the results")
         else:
             display_results(st.session_state["results"])

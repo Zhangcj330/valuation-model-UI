@@ -17,7 +17,7 @@ class ModelLogger:
         self.s3_prefix = os.getenv("S3_LOG_PREFIX", "model_logs/")
         self.s3_client = boto3.client("s3")
         self.run_history = []  # Initialize empty run history
-        self.load_history()  # Load existing history on initialization
+        self.load_logs_history()  # Load existing history on initialization
 
     def create_run_log(
         self,
@@ -82,7 +82,7 @@ class ModelLogger:
             except Exception as e:
                 print(f"Failed to upload log to S3: {str(e)}")
 
-    def load_history(self):
+    def load_logs_history(self):
         """Load run history from log files"""
         self.run_history = []
         log_files = sorted(self.log_dir.glob("*.json"), reverse=True)
@@ -228,13 +228,3 @@ class ModelLogger:
             )
             if file_date < cutoff_date:
                 log_file.unlink()
-
-    def _load_logs(self):
-        """Load existing logs from directory"""
-        self.run_history = []
-        for log_file in sorted(self.log_dir.glob("*.json")):
-            try:
-                with open(log_file, "r") as f:
-                    self.run_history.append(json.load(f))
-            except Exception as e:
-                print(f"Error loading log file {log_file}: {str(e)}")

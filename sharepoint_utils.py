@@ -173,15 +173,29 @@ class SharePointClient:
 
     def get_file_url(self, file_path: str) -> str:
         """
-        Get SharePoint web URL for a file
+        Get SharePoint web URL for a file or folder
 
         Args:
-            file_path: Path to file in SharePoint
+            file_path: Path to file or folder in SharePoint
 
         Returns:
-            Web URL for the file
+            Web URL for the file or folder
         """
         file_path = file_path.lstrip("/")
+
+        # First try to get as a folder
+        response = requests.get(
+            f"{self.base_url}/sites/{self.site_id}/drive/root:/{file_path}",
+            headers=self.headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Return webUrl if it exists in response
+        if "webUrl" in data:
+            return data["webUrl"]
+
+        # If no webUrl found, try getting as a file
         response = requests.get(
             f"{self.base_url}/sites/{self.site_id}/drive/root:/{file_path}:/webUrl",
             headers=self.headers,
