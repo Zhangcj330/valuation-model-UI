@@ -6,14 +6,11 @@ import msal
 import requests
 import app_config
 
-from model_utils import load_assumptions, load_model_points, initialize_model
+from model_utils import initialize_model, get_model_handler
 from settings_utils import load_settings, save_settings, validate_settings
 from log import ModelLogger
-from s3_utils import (
-    get_excel_filenames_from_s3,
-    upload_to_s3,
-    get_foldernames_from_s3,
-)
+from s3_utils import S3Client
+from sharepoint_utils import SharePointClient
 
 # Initialize the logger
 logger = ModelLogger()
@@ -96,59 +93,75 @@ def display_login():
 
 def display_settings_management(saved_settings):
     """Display the settings management section"""
-
     st.info("You can save your current settings or load previously saved settings.")
 
-    url_settings = {}
+    storage_type = st.session_state.get("storage_type", "S3")
+    settings = {}
 
-    assumption_table_url = st.text_input(
-        "Enter S3 URL for assumption table",
-        value=(
-            saved_settings.get("assumption_table_url", "") if saved_settings else ""
-        ),
-        help="Format: s3://bucket-name/path/to/file.xlsx",
-    )
-    url_settings["assumption_table_url"] = assumption_table_url
+    # Preserve all settings regardless of storage type
+    if saved_settings:
+        settings = saved_settings.copy()
 
-    models_url = st.text_input(
-        "Enter S3 URL for models",
-        value=(saved_settings.get("models_url", "") if saved_settings else ""),
-        help="Format: s3://bucket-name/path/",
-        key="models_url_input",
-    )
-    url_settings["models_url"] = models_url
+    # Define common field names and their display labels
+    field_configs = {
+        "assumption_url": {
+            "label": "Assumptions Path",
+            "help": {
+                "S3": "Format: s3://bucket-name/path/to/file.xlsx",
+                "SharePoint": "Enter the relative path to the assumptions folder",
+            },
+        },
+        "models_url": {
+            "label": "Models Path",
+            "help": {
+                "S3": "Format: s3://bucket-name/path/",
+                "SharePoint": "Enter the relative path to the models folder",
+            },
+        },
+        "model_points_url": {
+            "label": "Model Points Path",
+            "help": {
+                "S3": "Format: s3://bucket-name/path/",
+                "SharePoint": "Enter the relative path to the model points folder",
+            },
+        },
+        "results_url": {
+            "label": "Results Path",
+            "help": {
+                "S3": "Format: s3://bucket-name/path/to/output/folder/",
+                "SharePoint": "Enter the relative path to store results",
+            },
+        },
+    }
 
-    model_point_url = st.text_input(
-        "Enter S3 URL for model point files",
-        value=(
-            saved_settings.get("model_point_files_url", "") if saved_settings else ""
-        ),
-        help="Format: s3://bucket-name/path/",
-        key="mp_url_input",
-    )
+    prefix = "s3_" if storage_type == "S3" else "sp_"
 
-    url_settings["model_point_files_url"] = model_point_url
-
-    url_settings["output_s3_url"] = st.text_input(
-        "Enter S3 URL for storing results",
-        value=(saved_settings.get("output_s3_url", "") if saved_settings else ""),
-        help="Format: s3://bucket-name/path/to/output/folder/",
-    )
+    # Create input fields dynamically
+    for base_key, config in field_configs.items():
+        prefixed_key = f"{prefix}{base_key}"
+        settings[prefixed_key] = st.text_input(
+            config["label"],
+            value=saved_settings.get(prefixed_key, ""),
+            help=config["help"][storage_type],
+            key=f"{prefixed_key}_input",
+        )
+        # Map to generic keys for the rest of the application
+        settings[base_key] = settings[prefixed_key]
 
     # Form buttons
     col1, col2, col3 = st.columns([2, 1, 2])
     with col1:
-        Load_button = st.button("Load Saved Settings")
+        load_button = st.button("Load Settings")
     with col3:
         save_button = st.button("Save Settings")
 
-    if Load_button:
-        st.session_state.update(saved_settings)
+    if load_button:
         st.success("Settings loaded successfully!")
+        st.rerun()
     if save_button:
-        save_settings(url_settings)
+        save_settings(settings)
         st.success("Settings saved successfully!")
-    return url_settings
+    return settings
 
 
 def collect_S3_inputs(saved_settings):
@@ -172,14 +185,11 @@ def collect_S3_inputs(saved_settings):
             help="Select the valuation date for the valuation model",
         )
     }
-    settings["assumption_table_url"] = saved_settings["assumption_table_url"]
-    settings["models_url"] = saved_settings["models_url"]
-    settings["output_s3_url"] = saved_settings["output_s3_url"]
-    settings["assumption_table_url"] = saved_settings["assumption_table_url"]
 
-    models_url = saved_settings["models_url"]
+    # Use the generic URL keys that were mapped in display_settings_management
+    models_url = saved_settings.get("models_url", "")
     try:
-        available_models = get_foldernames_from_s3(models_url)
+        available_models = S3Client().list_folders(models_url)
         if available_models:
             st.session_state["available_models"] = available_models
         else:
@@ -208,12 +218,9 @@ def collect_S3_inputs(saved_settings):
 
     settings["model_name"] = selected_models
 
-    model_point_url = saved_settings["model_point_files_url"]
-    # 设置 model_point_files_url
-    settings["model_point_files_url"] = model_point_url
-    # Handle URL confirmation and file listing
+    model_points_url = saved_settings.get("model_points_url", "")
     try:
-        available_products = get_excel_filenames_from_s3(model_point_url)
+        available_products = S3Client().list_files(model_points_url)
         if available_products:
             st.session_state["available_products"] = available_products
         else:
@@ -225,7 +232,6 @@ def collect_S3_inputs(saved_settings):
     # Product Groups selection
     available_products = st.session_state.get("available_products", [])
     if available_products:
-        # Filter default values to ensure they exist in available options
         default_products = []
         if saved_settings and "product_groups" in saved_settings:
             default_products = [
@@ -235,7 +241,7 @@ def collect_S3_inputs(saved_settings):
         selected_products = st.multiselect(
             "Product Groups",
             options=available_products,
-            default=default_products,  # Use filtered defaults
+            default=default_products,
             help="Select product groups to process",
             placeholder="Please select at least one product group",
         )
@@ -257,13 +263,119 @@ def collect_S3_inputs(saved_settings):
         help="Enter the number of years to project",
     )
 
+    # Copy over the URLs from saved settings
+    for key in ["assumption_url", "models_url", "model_points_url", "results_url"]:
+        settings[key] = saved_settings.get(key, "")
+
     return settings
 
 
 def collect_sharepoint_inputs(saved_settings) -> dict:
-    placeholder = st.empty()
-    placeholder.text("Sharepoint inputs not implemented yet")
-    return {}
+    """Collect all form inputs for SharePoint storage"""
+    default_date = datetime.date.today()
+    if saved_settings and "valuation_date" in saved_settings:
+        try:
+            if isinstance(saved_settings["valuation_date"], str):
+                default_date = datetime.datetime.strptime(
+                    saved_settings["valuation_date"], "%Y-%m-%d"
+                ).date()
+            else:
+                default_date = saved_settings["valuation_date"]
+        except (ValueError, TypeError):
+            pass
+
+    settings = {
+        "valuation_date": st.date_input(
+            "Valuation Date",
+            value=default_date,
+            help="Select the valuation date for the valuation model",
+        )
+    }
+
+    # Use the generic URL keys that were mapped in display_settings_management
+    models_url = saved_settings.get("models_url", "")
+    try:
+        # Here you would implement SharePoint folder listing
+        available_models = SharePointClient().list_folders(
+            models_url
+        )  # get_sharepoint_folders(models_url)
+        if available_models:
+            st.session_state["available_models"] = available_models
+        else:
+            st.session_state["available_models"] = []
+    except Exception as e:
+        st.error(f"Error accessing SharePoint: {str(e)}")
+        st.session_state["available_models"] = []
+
+    # Model selection
+    available_models = st.session_state.get("available_models", [])
+    if available_models:
+        selected_models = st.multiselect(
+            "Model selection",
+            options=available_models,
+            default=(saved_settings.get("model_name", []) if saved_settings else []),
+            help="Select model to process",
+            placeholder="Please select your model",
+        )
+    else:
+        st.warning(
+            "No models found in SharePoint. Please check your folder path and permissions."
+        )
+        selected_models = []
+
+    settings["model_name"] = selected_models
+
+    model_points_url = saved_settings.get("model_points_url", "")
+
+    try:
+        # Here you would implement SharePoint file listing
+        available_products = SharePointClient().list_files(
+            model_points_url
+        )  # get_sharepoint_excel_files(model_points_url)
+        if available_products:
+            st.session_state["available_products"] = available_products
+        else:
+            st.session_state["available_products"] = []
+    except Exception as e:
+        st.error(f"Error accessing SharePoint: {str(e)}")
+        st.session_state["available_products"] = []
+
+    # Product Groups selection
+    available_products = st.session_state.get("available_products", [])
+    if available_products:
+        default_products = []
+        if saved_settings and "product_groups" in saved_settings:
+            default_products = [
+                p for p in saved_settings["product_groups"] if p in available_products
+            ]
+
+        selected_products = st.multiselect(
+            "Product Groups",
+            options=available_products,
+            default=default_products,
+            help="Select product groups to process",
+            placeholder="Please select at least one product group",
+        )
+    else:
+        st.warning(
+            "No product files found in SharePoint. Please check your folder path and permissions."
+        )
+        selected_products = []
+
+    settings["product_groups"] = selected_products
+
+    settings["projection_period"] = st.number_input(
+        "Projection Period (Years)",
+        min_value=1,
+        max_value=100,
+        value=(saved_settings.get("projection_period", 30) if saved_settings else 30),
+        help="Enter the number of years to project",
+    )
+
+    # Copy over the URLs from saved settings
+    for key in ["assumption_url", "models_url", "model_points_url", "results_url"]:
+        settings[key] = saved_settings.get(key, "")
+    return settings
 
 
 def initialize_progress_indicators():
@@ -281,80 +393,57 @@ def clear_progress_indicators(progress_bar, status_text, time_text):
     time_text.empty()
 
 
-def run_single_model(product, settings, model_points_list, assumptions):
-    """Run model for a single product and return results"""
-    # Find matching model points file for this product
-    model_points_df = model_points_list[product]
-
-    # Initialize and run model
-    model = initialize_model(settings, assumptions, model_points_df)
-
-    # Generate results
-    pv_df = model.Results.pv_results(0)
-    analytics_df = model.Results.analytics()
-
-    return {
-        "present_value": pv_df,
-        "analytics": analytics_df,
-        "model_points_count": len(model_points_df),
-        "results_count": len(pv_df),
-    }
-
-
-def process_model_results(product, model_results, settings, start_time):
-    """Process and save model results for a single product"""
-    # Prepare Excel output
-    output_buffer = io.BytesIO()
-    with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
-        model_results["analytics"].to_excel(writer, sheet_name="analytics", index=False)
-        model_results["present_value"].to_excel(
-            writer, sheet_name="present_value", index=False
-        )
-
-    # Save to S3
-    output_filename = f"results_{product}_{start_time}.xlsx"
-    output_path = f"{settings['output_s3_url'].rstrip('/')}/{output_filename}"
-    output_buffer.seek(0)
-    upload_to_s3(output_buffer.getvalue(), output_path)
-
-    return {"output_path": output_path, "results": model_results}
-
-
-def process_single_product(
+def process_single_model_point(
     product,
     product_idx,
     settings,
-    model_points_list,
+    model_points_df,
     assumptions,
     total_products,
     progress_bar,
     current_step,
     total_steps,
-    start_time,
 ):
     """Process a single product and return its results"""
     status_text = st.empty()
     status_text.text(f"Processing {product}... ({product_idx}/{total_products})")
 
     # Run model
-    model_results = run_single_model(product, settings, model_points_list, assumptions)
+    proj_period = settings["projection_period"]
+    val_date = settings["valuation_date"]
+    model = initialize_model(assumptions, model_points_df, proj_period, val_date)
+
     current_step += 1
     progress_bar.progress(current_step / total_steps)
-
+    len(model_points_df)
     # Process and save results
-    processed_results = process_model_results(
-        product, model_results, settings, start_time
-    )
+    pv_df = model.Results.pv_results(0)
+    analytics_df = model.Results.analytics()
 
-    return processed_results, current_step
+    model.close()
+
+    model_results = {
+        "present_value": pv_df,
+        "analytics": analytics_df,
+        "model_points_count": len(model_points_df),
+        "results_count": len(pv_df),
+    }
+
+    return model_results, current_step
 
 
-def display_results(results, output_locations, total_time):
+def format_results(model_results):
+    output_buffer = io.BytesIO()
+    with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
+        model_results["analytics"].to_excel(writer, sheet_name="analytics", index=False)
+        model_results["present_value"].to_excel(
+            writer, sheet_name="present_value", index=False
+        )
+    return output_buffer
+
+
+def display_results(results):
     """Display the results of the model run"""
-    st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
-    st.write("Results saved to:")
-    for location in output_locations:
-        st.write(f"- {location}")
 
     # Display results in a simpler format
     st.subheader("Model Results")
@@ -394,40 +483,49 @@ def process_model_run(settings):
     # Initialize progress tracking
     progress_bar, status_text, time_text = initialize_progress_indicators()
     start_time = datetime.datetime.now()
-
+    output_timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     with st.spinner("Running valuation model..."):
         try:
+            # Get appropriate model handler
+            handler = get_model_handler(st.session_state.get("storage_type", "S3"))
             # Download and process input files
             status_text.text("Downloading and processing input files...")
-            assumptions = load_assumptions(settings["assumption_table_url"])
-            model_points_list = load_model_points(settings["model_point_files_url"])
-
+            assumptions = handler.download_assumptions(settings["assumption_url"])
+            handler.download_model(
+                settings.get("models_url"), settings.get("model_name")
+            )
+            model_points_list = handler.download_model_points(
+                settings["model_points_url"], settings["product_groups"]
+            )
             # Initialize tracking variables
             total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
             current_step = 0
             progress_bar.progress(current_step / total_steps)
-            output_locations = []
+
             results = {}
 
             # Process each product
             for product_idx, product in enumerate(settings["product_groups"], 1):
-                product_result, current_step = process_single_product(
+                model_result, current_step = process_single_model_point(
                     product=product,
                     product_idx=product_idx,
                     settings=settings,
-                    model_points_list=model_points_list,
+                    model_points_df=model_points_list[product],
                     assumptions=assumptions,
                     total_products=len(settings["product_groups"]),
                     progress_bar=progress_bar,
                     current_step=current_step,
                     total_steps=total_steps,
-                    start_time=start_time,
                 )
 
-                output_locations.append(product_result["output_path"])
-                results[product] = product_result["results"]
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
+
+                output_buffer = format_results(model_result)
+                output_filename = f"results_{product}_{output_timestamp}.xlsx"
+                output_path = f"{settings['results_url'].rstrip('/')}/{output_filename}"
+                handler.save_results(output_buffer.getvalue(), output_path)
+                results[product] = model_result
 
             # Calculate total time
             end_time = datetime.datetime.now()
@@ -439,12 +537,16 @@ def process_model_run(settings):
                 start_time=start_time,
                 end_time=end_time,
                 status="success",
-                output_location=output_locations,
+                output_location=settings["results_url"],
             )
 
             # Clear progress indicators and display results
             clear_progress_indicators(progress_bar, status_text, time_text)
-            display_results(results, output_locations, total_time)
+            st.session_state["results"] = results
+            st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
+            st.write("Results saved to:")
+            output_location = settings["results_url"].replace("%20", " ")
+            st.write(f"-  {output_location}")
 
         except Exception as e:
             # Clear progress indicators
@@ -489,16 +591,13 @@ def main():
         # Settings management
         saved_settings = load_settings()
         with st.expander("Settings Management"):
-            # Storage configuration section
-            st.subheader("Storage Configuration")
+            # Storage configuration sectio
             storage_type = st.radio(
                 "Select Storage Type", options=["S3", "SharePoint"], horizontal=True
             )
             # File selection based on storage type
-            if storage_type == "S3":
-                url_settings = display_settings_management(saved_settings)
-            else:
-                url_settings = display_settings_management(saved_settings)
+            st.session_state["storage_type"] = storage_type
+            url_settings = display_settings_management(saved_settings)
 
         # Create main form for inputs
         if storage_type == "S3":
@@ -520,10 +619,10 @@ def main():
     # Results tab
     with results_tab:
         st.subheader("Model Results")
-        if "latest_results" in st.session_state:
-            display_results(st.session_state.latest_results)
+        if "results" not in st.session_state or "total_time" not in st.session_state:
+            st.info("Run model to display the results")
         else:
-            st.info("Run a model to see results here")
+            display_results(st.session_state["results"])
 
     # Run History tab
     with history_tab:

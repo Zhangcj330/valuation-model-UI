@@ -1,100 +1,203 @@
 import pandas as pd
 import modelx as mx
-from s3_utils import (
-    download_from_s3,
-    download_and_validate_excel_files,
-    download_folder_from_s3,
-)
 
 import logging
+from abc import ABC, abstractmethod
+from typing import Dict, BinaryIO
+import os
 
 logger = logging.getLogger(__name__)
 
-
-def load_assumptions(assumption_url):
-    """Load assumption tables from S3"""
-    assumption_file = download_from_s3(assumption_url)
-    return {
-        "lapse_rate_table": pd.read_excel(assumption_file, sheet_name="lapse"),
-        "inflation_rate_table": pd.read_excel(assumption_file, sheet_name="CPI"),
-        "prem_exp_table": pd.read_excel(assumption_file, sheet_name="prem expenses"),
-        "fixed_exp_table": pd.read_excel(assumption_file, sheet_name="fixed expenses"),
-        "comm_table": pd.read_excel(assumption_file, sheet_name="commissions"),
-        "disc_curve": pd.read_excel(assumption_file, sheet_name="discount curve"),
-        "mort_table": pd.read_excel(assumption_file, sheet_name="mortality"),
-        "trauma_table": pd.read_excel(assumption_file, sheet_name="trauma"),
-        "tpd_table": pd.read_excel(assumption_file, sheet_name="TPD"),
-        "prem_rate_level_table": pd.read_excel(
-            assumption_file, sheet_name="prem_rate_level"
-        ),
-        "prem_rate_stepped_table": pd.read_excel(
-            assumption_file, sheet_name="prem_rate_stepped"
-        ),
-        "RA_table": pd.read_excel(assumption_file, sheet_name="RA"),
-        "RI_prem_rate_level_table": pd.read_excel(
-            assumption_file, sheet_name="RI_prem_rate_level"
-        ),
-        "RI_prem_rate_stepped_table": pd.read_excel(
-            assumption_file, sheet_name="RI_prem_rate_stepped"
-        ),
-    }
+MODEL_PATH = "./tmp/models"
 
 
-def load_model_points(model_points_url):
-    """Load model points from S3"""
-    model_point_files = download_and_validate_excel_files(model_points_url)
-    return model_point_files
+class ModelDataHandler(ABC):
+    """Abstract base class for model operations"""
+
+    @abstractmethod
+    def download_assumptions(self, url: str) -> Dict[str, pd.DataFrame]:
+        """Download assumption tables from storage"""
+        pass
+
+    @abstractmethod
+    def download_model_points(
+        self, url: str, product_groups: list
+    ) -> Dict[str, pd.DataFrame]:
+        """Download model points from storage"""
+        pass
+
+    @abstractmethod
+    def download_model(
+        self, models_url: str, model_name: str, local_path: str = MODEL_PATH
+    ) -> None:
+        """Download model from storage to local path"""
+        pass
+
+    @abstractmethod
+    def save_results(self, content: BinaryIO, output_path: str) -> str:
+        """Save results to storage"""
+        pass
 
 
-def initialize_model(settings, assumptions, model_points_df):
-    """Initialize and configure the modelx model"""
-    model_name = settings.get("model_name")
-    if not model_name:
-        raise ValueError("Model name not specified in settings")
+class S3ModelDataHandler(ModelDataHandler):
+    """S3 implementation of model operations"""
 
-    model_path = settings.get("models_url")
+    def __init__(self):
+        from s3_utils import S3Client
 
-    download_folder_from_s3(model_path, model_name, "./tmp")
-    model = mx.read_model("./tmp")
-    model.Data_Inputs.proj_period = settings["projection_period"]
-    model.Data_Inputs.val_date = settings["valuation_date"]
-    for attribute, dataframe in assumptions.items():
-        setattr(model.Data_Inputs, attribute, dataframe)
-    model.Data_Inputs.model_point_table = model_points_df
-    return model
+        self.s3_client = S3Client()
 
-
-def process_all_model_points(settings, assumptions, model_points_list):
-    """Process all model point files and return combined results"""
-    all_results = {}
-
-    for model_points_df in model_points_list:
-        # Initialize model for this set of model points
-        model = initialize_model(settings, assumptions, model_points_df)
-
-        # Run calculations
-        results = run_model_calculations(model, settings["product_groups"])
-
-        # Generate unique identifier for this model point set
-        # You might want to extract this from the DataFrame or use another method
-        model_point_id = (
-            model_points_df.get("model_point_set_id", "").iloc[0]
-            if "model_point_set_id" in model_points_df.columns
-            else f"set_{len(all_results)}"
-        )
-
-        all_results[model_point_id] = results
-
-    return all_results
-
-
-def run_model_calculations(model, product_groups):
-    """Run calculations for each product group"""
-    results = {}
-    for product in product_groups:
-        results[product] = {
-            "present_value": model.Results.pv_results(0),
-            "analytics": model.Results.analytics(),
+    def download_assumptions(self, url: str) -> Dict[str, pd.DataFrame]:
+        assumption_file = self.s3_client.download_file(url)
+        return {
+            "lapse_rate_table": pd.read_excel(assumption_file, sheet_name="lapse"),
+            "inflation_rate_table": pd.read_excel(assumption_file, sheet_name="CPI"),
+            "prem_exp_table": pd.read_excel(
+                assumption_file, sheet_name="prem expenses"
+            ),
+            "fixed_exp_table": pd.read_excel(
+                assumption_file, sheet_name="fixed expenses"
+            ),
+            "comm_table": pd.read_excel(assumption_file, sheet_name="commissions"),
+            "disc_curve": pd.read_excel(assumption_file, sheet_name="discount curve"),
+            "mort_table": pd.read_excel(assumption_file, sheet_name="mortality"),
+            "trauma_table": pd.read_excel(assumption_file, sheet_name="trauma"),
+            "tpd_table": pd.read_excel(assumption_file, sheet_name="TPD"),
+            "prem_rate_level_table": pd.read_excel(
+                assumption_file, sheet_name="prem_rate_level"
+            ),
+            "prem_rate_stepped_table": pd.read_excel(
+                assumption_file, sheet_name="prem_rate_stepped"
+            ),
+            "RA_table": pd.read_excel(assumption_file, sheet_name="RA"),
+            "RI_prem_rate_level_table": pd.read_excel(
+                assumption_file, sheet_name="RI_prem_rate_level"
+            ),
+            "RI_prem_rate_stepped_table": pd.read_excel(
+                assumption_file, sheet_name="RI_prem_rate_stepped"
+            ),
         }
 
-    return results
+    def download_model_points(
+        self, url: str, product_groups: list
+    ) -> Dict[str, pd.DataFrame]:
+        files = self.s3_client.list_files(url)
+        model_points_dict = {}
+        for file in files:
+            if file.endswith(".xlsx") and file in product_groups:
+                # Remove any leading/trailing slashes from url and file
+                clean_url = url.rstrip("/")
+                clean_file = file.lstrip("/")
+
+                file_url = f"{clean_url}/{clean_file}"
+                file_content = self.s3_client.download_file(file_url)
+                df = pd.read_excel(file_content)
+                model_points_dict[file] = df
+        return model_points_dict
+
+    def download_model(
+        self, models_url: str, model_name: str, local_path: str = MODEL_PATH
+    ) -> None:
+        self.s3_client.download_folder(models_url, model_name, local_path)
+
+    def save_results(self, content: BinaryIO, output_path: str) -> str:
+        return self.s3_client.upload_file(content, output_path)
+
+
+class SharePointModelDataHandler(ModelDataHandler):
+    """SharePoint implementation of model operations"""
+
+    def __init__(self):
+        from sharepoint_utils import SharePointClient
+
+        self.sp_client = SharePointClient()
+
+    def download_assumptions(self, url: str) -> Dict[str, pd.DataFrame]:
+        assumption_file = self.sp_client.download_file(url)
+        return {
+            "lapse_rate_table": pd.read_excel(assumption_file, sheet_name="lapse"),
+            "inflation_rate_table": pd.read_excel(assumption_file, sheet_name="CPI"),
+            "prem_exp_table": pd.read_excel(
+                assumption_file, sheet_name="prem expenses"
+            ),
+            "fixed_exp_table": pd.read_excel(
+                assumption_file, sheet_name="fixed expenses"
+            ),
+            "comm_table": pd.read_excel(assumption_file, sheet_name="commissions"),
+            "disc_curve": pd.read_excel(assumption_file, sheet_name="discount curve"),
+            "mort_table": pd.read_excel(assumption_file, sheet_name="mortality"),
+            "trauma_table": pd.read_excel(assumption_file, sheet_name="trauma"),
+            "tpd_table": pd.read_excel(assumption_file, sheet_name="TPD"),
+            "prem_rate_level_table": pd.read_excel(
+                assumption_file, sheet_name="prem_rate_level"
+            ),
+            "prem_rate_stepped_table": pd.read_excel(
+                assumption_file, sheet_name="prem_rate_stepped"
+            ),
+            "RA_table": pd.read_excel(assumption_file, sheet_name="RA"),
+            "RI_prem_rate_level_table": pd.read_excel(
+                assumption_file, sheet_name="RI_prem_rate_level"
+            ),
+            "RI_prem_rate_stepped_table": pd.read_excel(
+                assumption_file, sheet_name="RI_prem_rate_stepped"
+            ),
+        }
+
+    def download_model_points(
+        self, url: str, product_groups: list
+    ) -> Dict[str, pd.DataFrame]:
+        # Implement SharePoint-specific model points downloading
+        files = self.sp_client.list_files(url)
+
+        model_points_dict = {}
+        for file in files:
+            if file.endswith(".xlsx") and file in product_groups:
+                file_content = self.sp_client.download_file(f"{url}/{file}")
+                df = pd.read_excel(file_content)
+                model_points_dict[file] = df
+        return model_points_dict
+
+    def download_model(
+        self, models_url: str, model_name: str, local_path: str = MODEL_PATH
+    ) -> None:
+        # Implement SharePoint-specific model download
+        model_path = f"{models_url}/{model_name}"
+        if not os.path.exists(local_path):
+            os.makedirs(local_path)
+
+        self.sp_client.download_folder(model_path, local_path)
+
+    def save_results(self, content: BinaryIO, output_path: str) -> str:
+        return self.sp_client.upload_file(content, output_path)
+
+
+def get_model_handler(storage_type: str) -> ModelDataHandler:
+    """Factory function to get appropriate model handler"""
+    if storage_type == "S3":
+        return S3ModelDataHandler()
+    elif storage_type == "SharePoint":
+        return SharePointModelDataHandler()
+    else:
+        raise ValueError(f"Unsupported storage type: {storage_type}")
+
+
+def initialize_model(
+    assumptions: Dict[str, pd.DataFrame],
+    model_points_df: pd.DataFrame,
+    proj_period: int,
+    val_date: str,
+    model_path: str = MODEL_PATH,
+) -> mx:
+    """Initialize and configure the modelx model"""
+    # Initialize model
+    model = mx.read_model(model_path)
+    model.Data_Inputs.proj_period = proj_period
+    model.Data_Inputs.val_date = val_date
+
+    for attribute, dataframe in assumptions.items():
+        setattr(model.Data_Inputs, attribute, dataframe)
+
+    # Set model points
+    model.Data_Inputs.model_point_table = model_points_df
+
+    return model

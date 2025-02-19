@@ -3,6 +3,7 @@ import streamlit as st
 import io
 import requests
 import app_config
+import os
 
 
 class SharePointClient:
@@ -62,7 +63,7 @@ class SharePointClient:
                 if "folder" not in item:  # If not a folder
                     name = item["name"]
                     if name.endswith(".xlsx"):
-                        files.append(name.replace(".xlsx", ""))
+                        files.append(name)
 
             return sorted(files)
         except Exception as e:
@@ -187,3 +188,64 @@ class SharePointClient:
         )
         response.raise_for_status()
         return response.json()["webUrl"]
+
+    def download_folder(self, folder_path: str, local_path: str) -> None:
+        """
+        Download an entire folder from SharePoint to a local path
+
+        Args:
+            folder_path: Path to the folder in SharePoint
+            local_path: Local path where to save the downloaded files
+        """
+        try:
+            folder_path = folder_path.lstrip("/")
+            local_path = os.path.abspath(os.path.join(os.getcwd(), local_path))
+
+            # Create local directory if it doesn't exist
+            if not os.path.exists(local_path):
+                os.makedirs(local_path)
+
+            # Get folder structure
+            structure = self.get_folder_structure(folder_path)
+
+            # Download files in the root folder
+            root_files = self.list_files(folder_path)
+            for file in root_files:
+                file_path = f"{folder_path}/{file}".lstrip("/")
+                local_file_path = os.path.join(local_path, file)
+
+                content = self.download_file(file_path)
+                with open(local_file_path, "wb") as f:
+                    f.write(content.getvalue())
+
+            # Recursively download files in subfolders
+            def download_subfolder(
+                subfolder_structure, current_path, current_local_path
+            ):
+                for folder_name, content in subfolder_structure.items():
+                    folder_path = f"{current_path}/{folder_name}".lstrip("/")
+                    new_local_path = os.path.join(current_local_path, folder_name)
+
+                    # Create local subfolder
+                    if not os.path.exists(new_local_path):
+                        os.makedirs(new_local_path)
+
+                    # Download files in this subfolder
+                    for file in content["files"]:
+                        file_path = f"{folder_path}/{file}".lstrip("/")
+                        local_file_path = os.path.join(new_local_path, file)
+
+                        content = self.download_file(file_path)
+                        with open(local_file_path, "wb") as f:
+                            f.write(content.getvalue())
+
+                    # Process subfolders recursively
+                    download_subfolder(
+                        content["subfolders"], folder_path, new_local_path
+                    )
+
+            # Start recursive download for subfolders
+            download_subfolder(structure, folder_path, local_path)
+
+        except Exception as e:
+            raise Exception(f"Error downloading folder from SharePoint: {str(e)}")

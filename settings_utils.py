@@ -66,11 +66,11 @@ def validate_settings(settings, validate_required=False):
             "valuation_date",
             "models_url",
             "model_name",
-            "assumption_table_url",
-            "model_point_files_url",
+            "assumption_url",
+            "model_points_url",
             "projection_period",
             "product_groups",
-            "output_s3_url",
+            "results_url",
         ]
 
         missing_keys = [key for key in required_keys if key not in settings]
@@ -79,11 +79,30 @@ def validate_settings(settings, validate_required=False):
 
         # Only validate non-empty values if validate_required is True
         if validate_required:
-            # Validate models URL
-            if not settings["models_url"]:
-                raise ValueError("Models URL must be provided")
-            if not settings["models_url"].startswith("s3://"):
-                raise ValueError("Invalid models URL format. Must start with 's3://'")
+            storage_type = st.session_state.get("storage_type", "S3")
+
+            # Validate URLs based on storage type
+            url_fields = [
+                "assumption_url",
+                "models_url",
+                "model_points_url",
+                "results_url",
+            ]
+
+            for url_field in url_fields:
+                url = settings[url_field]
+                if not url:
+                    raise ValueError(f"Missing required URL for {url_field}")
+
+                # Validate URL format based on storage type
+                if storage_type == "S3":
+                    if not url.startswith("s3://"):
+                        raise ValueError(
+                            f"Invalid S3 URL format for {url_field}: {url}"
+                        )
+                else:  # SharePoint
+                    # Add SharePoint-specific URL validation if needed
+                    pass
 
             # Validate model selection
             if not settings["model_name"]:
@@ -94,19 +113,6 @@ def validate_settings(settings, validate_required=False):
                 settings["model_name"] = settings["model_name"][
                     0
                 ]  # Convert list to single value
-
-            # Validate S3 URLs
-            s3_urls = [
-                ("assumption_table_url", settings["assumption_table_url"]),
-                ("model_point_files_url", settings["model_point_files_url"]),
-                ("output_s3_url", settings["output_s3_url"]),
-            ]
-
-            for url_name, url in s3_urls:
-                if not url:
-                    raise ValueError(f"Missing required S3 URL for {url_name}")
-                if not url.startswith("s3://"):
-                    raise ValueError(f"Invalid S3 URL format for {url_name}: {url}")
 
             # Validate product groups
             if not settings["product_groups"]:
