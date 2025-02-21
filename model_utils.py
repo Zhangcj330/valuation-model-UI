@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, BinaryIO
 import os
-from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -113,17 +112,14 @@ class SharePointModelDataHandler(ModelDataHandler):
 
         self.sp_client = SharePointClient()
 
-    def _normalize_url(self, url: str) -> str:
-        """Normalize the SharePoint URL to ensure compatibility"""
-        # Decode URL-encoded characters
-        return unquote(url.strip("/"))
-
     def download_assumptions(self, url: str) -> Dict[str, pd.DataFrame]:
-        normalized_url = self._normalize_url(url)
-        assumption_file = self.sp_client.download_file(normalized_url)
+        assumption_file = self.sp_client.download_file(url)
+        # export to excel file
+        with open("assumptions.xlsx", "wb") as f:
+            f.write(assumption_file.getvalue())
         return {
-            "lapse_rate_table": pd.read_excel(assumption_file, sheet_name="lapse"),
-            "inflation_rate_table": pd.read_excel(assumption_file, sheet_name="CPI"),
+            "lapse_rate_table": pd.read_excel("assumptions.xlsx", sheet_name="lapse"),
+            "inflation_rate_table": pd.read_excel("assumptions.xlsx", sheet_name="CPI"),
             "prem_exp_table": pd.read_excel(
                 assumption_file, sheet_name="prem expenses"
             ),
@@ -153,22 +149,22 @@ class SharePointModelDataHandler(ModelDataHandler):
     def download_model_points(
         self, url: str, product_groups: list
     ) -> Dict[str, pd.DataFrame]:
-        normalized_url = self._normalize_url(url)
-        files = self.sp_client.list_files(normalized_url)
+        files = self.sp_client.list_files(url)
 
         model_points_dict = {}
         for file in files:
             if file.endswith(".xlsx") and file in product_groups:
-                file_content = self.sp_client.download_file(f"{normalized_url}/{file}")
+                file_content = self.sp_client.download_file(f"{url}/{file}")
                 df = pd.read_excel(file_content)
+                with open("model_points.xlsx", "wb") as f:
+                    f.write(file_content.getvalue())
                 model_points_dict[file] = df
         return model_points_dict
 
     def download_model(
         self, models_url: str, model_name: str, local_path: str = MODEL_PATH
     ) -> None:
-        normalized_models_url = self._normalize_url(models_url)
-        model_path = f"{normalized_models_url}/{model_name}"
+        model_path = f"{models_url}/{model_name}"
         if not os.path.exists(local_path):
             os.makedirs(local_path)
 
@@ -178,8 +174,7 @@ class SharePointModelDataHandler(ModelDataHandler):
         return self.sp_client.upload_file(content, output_path)
 
     def get_file_url(self, file_path: str) -> str:
-        normalized_file_path = self._normalize_url(file_path)
-        return self.sp_client.get_file_url(normalized_file_path)
+        return self.sp_client.get_file_url(file_path)
 
 
 def get_model_handler(storage_type: str) -> ModelDataHandler:

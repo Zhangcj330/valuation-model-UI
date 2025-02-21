@@ -188,70 +188,63 @@ def collect_S3_inputs(saved_settings):
 
     # Use the generic URL keys that were mapped in display_settings_management
     models_url = saved_settings.get("models_url", "")
-    try:
-        available_models = S3Client().list_folders(models_url)
-        if available_models:
-            st.session_state["available_models"] = available_models
-        else:
+    if models_url:
+        try:
+            available_models = S3Client().list_folders(models_url)
+            if available_models:
+                st.session_state["available_models"] = available_models
+            else:
+                st.session_state["available_models"] = []
+        except Exception as e:
+            st.error(f"Error accessing S3 path: {str(e)}")
             st.session_state["available_models"] = []
-    except Exception as e:
-        st.error(f"Error accessing S3 path: {str(e)}")
+    else:
         st.session_state["available_models"] = []
 
     # Model Point Files selection
     available_models = st.session_state.get("available_models", [])
-    if available_models:
-        selected_models = st.multiselect(
-            "Model selection",
-            options=available_models,
-            default=(saved_settings.get("model_name", []) if saved_settings else []),
-            help="Select model to process",
-            placeholder="Please select your model",
-        )
-    else:
-        st.selectbox(
-            "Model selection",
-            (available_models),
-            help="Confirm model points files URL to show the available models",
-        )
-        selected_models = []
+    selected_models = st.selectbox(
+        "Model selection",
+        options=available_models,
+        help="Select model to process",
+        placeholder="Please select your model"
+        if available_models
+        else "No models available",
+    )
 
     settings["model_name"] = selected_models
 
     model_points_url = saved_settings.get("model_points_url", "")
-    try:
-        available_products = S3Client().list_files(model_points_url)
-        if available_products:
-            st.session_state["available_products"] = available_products
-        else:
+    if model_points_url:
+        try:
+            available_products = S3Client().list_files(model_points_url)
+            if available_products:
+                st.session_state["available_products"] = available_products
+            else:
+                st.session_state["available_products"] = []
+        except Exception as e:
+            st.error(f"Error accessing S3 path: {str(e)}")
             st.session_state["available_products"] = []
-    except Exception as e:
-        st.error(f"Error accessing S3 path: {str(e)}")
+    else:
         st.session_state["available_products"] = []
 
     # Model Point Files selection
     available_products = st.session_state.get("available_products", [])
-    if available_products:
-        default_products = []
-        if saved_settings and "product_groups" in saved_settings:
-            default_products = [
-                p for p in saved_settings["product_groups"] if p in available_products
-            ]
+    default_products = []
+    if saved_settings and "product_groups" in saved_settings:
+        default_products = [
+            p for p in saved_settings["product_groups"] if p in available_products
+        ]
 
-        selected_products = st.multiselect(
-            "Model Point Files",
-            options=available_products,
-            default=default_products,
-            help="Select model point files to process",
-            placeholder="Please select at least one model point files",
-        )
-    else:
-        st.multiselect(
-            "Model Point Files",
-            options=available_products,
-            help="Confirm model points files URL to show the available products",
-        )
-        selected_products = []
+    selected_products = st.multiselect(
+        "Model Point Files",
+        options=available_products,
+        default=default_products,
+        help="Select model point files to process",
+        placeholder="Please select at least one model point file"
+        if available_products
+        else "No model point files available",
+    )
 
     settings["product_groups"] = selected_products
 
@@ -294,73 +287,67 @@ def collect_sharepoint_inputs(saved_settings) -> dict:
 
     # Use the generic URL keys that were mapped in display_settings_management
     models_url = saved_settings.get("models_url", "")
-    try:
-        # Here you would implement SharePoint folder listing
-        available_models = SharePointClient().list_folders(
-            models_url
-        )  # get_sharepoint_folders(models_url)
-        if available_models:
-            st.session_state["available_models"] = available_models
-        else:
+    if models_url:
+        try:
+            # Here you would implement SharePoint folder listing
+            available_models = SharePointClient().list_folders(models_url)
+            if available_models:
+                st.session_state["available_models"] = available_models
+            else:
+                st.session_state["available_models"] = []
+        except Exception as e:
+            st.error(f"Error accessing SharePoint: {str(e)}")
             st.session_state["available_models"] = []
-    except Exception as e:
-        st.error(f"Error accessing SharePoint: {str(e)}")
+    else:
         st.session_state["available_models"] = []
 
     # Model selection
     available_models = st.session_state.get("available_models", [])
-    if available_models:
-        selected_models = st.multiselect(
-            "Model selection",
-            options=available_models,
-            default=(saved_settings.get("model_name", []) if saved_settings else []),
-            help="Select model to process",
-            placeholder="Please select your model",
-        )
-    else:
-        st.warning(
-            "No models found in SharePoint. Please check your folder path and permissions."
-        )
-        selected_models = []
+    selected_models = st.selectbox(
+        "Model selection",
+        options=available_models,
+        help="Select model to process",
+        placeholder="Please select your model"
+        if available_models
+        else "No models available",
+    )
 
     settings["model_name"] = selected_models
 
     model_points_url = saved_settings.get("model_points_url", "")
-
-    try:
-        # Here you would implement SharePoint file listing
-        available_products = SharePointClient().list_files(
-            model_points_url
-        )  # get_sharepoint_excel_files(model_points_url)
-        if available_products:
-            st.session_state["available_products"] = available_products
-        else:
+    if model_points_url:
+        try:
+            # Here you would implement SharePoint file listing
+            available_products = SharePointClient().list_files(
+                model_points_url
+            )  # get_sharepoint_excel_files(model_points_url)
+            if available_products:
+                st.session_state["available_products"] = available_products
+            else:
+                st.session_state["available_products"] = []
+        except Exception as e:
+            st.error(f"Error accessing SharePoint: {str(e)}")
             st.session_state["available_products"] = []
-    except Exception as e:
-        st.error(f"Error accessing SharePoint: {str(e)}")
+    else:
         st.session_state["available_products"] = []
 
     # Model Point Files selection
     available_products = st.session_state.get("available_products", [])
-    if available_products:
-        default_products = []
-        if saved_settings and "product_groups" in saved_settings:
-            default_products = [
-                p for p in saved_settings["product_groups"] if p in available_products
-            ]
+    default_products = []
+    if saved_settings and "product_groups" in saved_settings:
+        default_products = [
+            p for p in saved_settings["product_groups"] if p in available_products
+        ]
 
-        selected_products = st.multiselect(
-            "Model Point Files",
-            options=available_products,
-            default=default_products,
-            help="Select model point files to process",
-            placeholder="Please select at least one model point file",
-        )
-    else:
-        st.warning(
-            "No product files found in SharePoint. Please check your folder path and permissions."
-        )
-        selected_products = []
+    selected_products = st.multiselect(
+        "Model Point Files",
+        options=available_products,
+        default=default_products,
+        help="Select model point files to process",
+        placeholder="Please select at least one model point file"
+        if available_products
+        else "No model point files available",
+    )
 
     settings["product_groups"] = selected_products
 
@@ -375,6 +362,7 @@ def collect_sharepoint_inputs(saved_settings) -> dict:
     # Copy over the URLs from saved settings
     for key in ["assumption_url", "models_url", "model_points_url", "results_url"]:
         settings[key] = saved_settings.get(key, "")
+
     return settings
 
 
@@ -415,7 +403,7 @@ def process_single_model_point(
 
     current_step += 1
     progress_bar.progress(current_step / total_steps)
-    len(model_points_df)
+
     # Process and save results
     pv_df = model.Results.pv_results(0)
     analytics_df = model.Results.analytics()
@@ -428,6 +416,7 @@ def process_single_model_point(
         "model_points_count": len(model_points_df),
         "results_count": len(pv_df),
     }
+    status_text.empty()
 
     return model_results, current_step
 
@@ -477,7 +466,6 @@ def display_results(results):
 
 def process_model_run(settings):
     """Process the model run and display results"""
-    st.success("Settings validated! Ready to run valuation model.")
 
     # Initialize progress tracking
     progress_bar, status_text, time_text = initialize_progress_indicators()
@@ -498,6 +486,7 @@ def process_model_run(settings):
             model_points_list = handler.download_model_points(
                 settings["model_points_url"], settings["product_groups"]
             )
+            print("download success")
             # Initialize tracking variables
             total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
             current_step = 0
@@ -543,6 +532,7 @@ def process_model_run(settings):
 
             # Clear progress indicators and display results
             clear_progress_indicators(progress_bar, status_text, time_text)
+
             st.session_state["results"] = results
             st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
             if st.session_state.get("storage_type") == "SharePoint":
@@ -567,6 +557,49 @@ def process_model_run(settings):
             st.error(f"Error running model: {str(e)}")
 
 
+def convert_date_string(date_str):
+    """Convert a date string to a datetime.date object"""
+    try:
+        return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        st.error(f"Invalid date format: {date_str}")
+        return None
+
+
+def convert_to_list(value):
+    """Convert a comma-separated string to a list"""
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",")]
+    return value
+
+
+def process_batch_run(configurations):
+    """Process each configuration in the batch run"""
+    for config in configurations:
+        st.write(f"Running configuration: {config['run_number']}")
+        try:
+            # Convert date strings to date objects
+            if isinstance(config.get("valuation_date"), str):
+                config["valuation_date"] = convert_date_string(config["valuation_date"])
+            # Convert product_groups to a list if it's a string
+            config["product_groups"] = convert_to_list(config.get("product_groups", []))
+            config["projection_period"] = int(config["projection_period"])
+            # Validate settings
+            validate_settings(config, validate_required=True)
+            validation_text = st.empty()
+            validation_text.success("Settings validated! Ready to run valuation model.")
+            print(config)
+            process_model_run(config)
+            validation_text.empty()
+            if "results" not in st.session_state:
+                st.info("Run model to display the results")
+            else:
+                display_results(st.session_state["results"])
+            st.success(f"Run {config['run_number']} completed successfully!")
+        except Exception as e:
+            st.error(f"Error in run {config['run_number']}: {str(e)}")
+
+
 def main():
     """Main application function"""
     # Check authentication
@@ -585,16 +618,16 @@ def main():
     st.title("Enterprise Valuation Model")
 
     # Create main tabs
-    inputs_tab, results_tab, history_tab = st.tabs(
-        ["Model Inputs", "Results", "Run History"]
+    singlerun, batchrun, history_tab = st.tabs(
+        ["Single Run", "Batch Run", "Run History"]
     )
 
-    # Inputs tab
-    with inputs_tab:
+    # Single Run tab
+    with singlerun:
         # Settings management
         saved_settings = load_settings()
         with st.expander("Settings Management"):
-            # Storage configuration sectio
+            # Storage configuration section
             storage_type = st.radio(
                 "Select Storage Type", options=["SharePoint", "S3"], horizontal=True
             )
@@ -614,22 +647,42 @@ def main():
             submitted = st.button("Run Model")
 
         # Handle form submission
-
         if submitted:
             validate_settings(settings, validate_required=True)
+            validation_text = st.empty()
+            validation_text.success("Settings validated! Ready to run valuation model.")
             process_model_run(settings)
+            validation_text.empty()
+            st.subheader("Model Results")
+            if "results" not in st.session_state:
+                st.info("Run model to display the results")
+            else:
+                display_results(st.session_state["results"])
 
-    # Results tab
-    with results_tab:
-        st.subheader("Model Results")
-        if "results" not in st.session_state:
-            st.info("Run model to display the results")
-        else:
-            display_results(st.session_state["results"])
+    # Batch Run tab
+    with batchrun:
+        st.subheader("Batch Run Configuration")
+        uploaded_file = st.file_uploader("Upload Configuration File", type=["xlsx"])
+
+        if uploaded_file is not None:
+            try:
+                # Read the Excel file
+                df = pd.read_excel(uploaded_file)
+                configurations = df.to_dict(orient="records")
+                st.write("Configuration loaded successfully!")
+                st.dataframe(df)  # Display the configurations for confirmation
+
+                if st.button("Run Batch"):
+                    st.subheader("Model Results")
+                    process_batch_run(configurations)
+                    st.write("Preview of the input configurations:")
+
+            except Exception as e:
+                st.error(f"Error loading configuration file: {str(e)}")
 
     # Run History tab
     with history_tab:
-        st.subheader("Run History")
+        st.subheader("Model Run History")
         if "history_page" not in st.session_state:
             st.session_state["history_page"] = 1
         logger.display_run_history(page=st.session_state["history_page"])

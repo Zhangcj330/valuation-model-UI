@@ -128,9 +128,6 @@ class ModelLogger:
     def display_run_history(self, page=1, items_per_page=10):
         """Display run history in Streamlit sidebar with pagination"""
         history_data = self.get_run_history(page, items_per_page)
-
-        st.subheader("Model Run History")
-
         if not self.run_history:
             st.write("No run history available")
             return

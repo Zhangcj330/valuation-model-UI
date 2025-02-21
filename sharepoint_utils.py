@@ -4,6 +4,7 @@ import io
 import requests
 import app_config
 import os
+from urllib.parse import unquote, urlparse
 
 
 class SharePointClient:
@@ -18,7 +19,7 @@ class SharePointClient:
             "Content-Type": "application/json",
         }
         self.base_url = "https://graph.microsoft.com/v1.0"
-
+        self.site_name = app_config.SHAREPOINT_SITE_NAME
         # Get SharePoint site ID if not provided
         if not app_config.SHAREPOINT_SITE_ID:
             self.site_id = self._get_site_id()
@@ -43,8 +44,29 @@ class SharePointClient:
         except Exception as e:
             raise Exception(f"Failed to get site ID: {str(e)}")
 
+    def _normalize_url(self, url: str) -> str:
+        """Normalize the SharePoint URL to ensure compatibility"""
+
+        parsed_url = urlparse(url)
+        path = unquote(parsed_url.path).strip("/")
+        # Construct the Graph API path
+        # Assuming the path is something like '/sites/SiteName/Shared Documents/...'
+        if path.startswith("sites/"):
+            path_parts = path.split("/", 3)
+            if len(path_parts) > 3:
+                site_path = path_parts[
+                    3
+                ]  # This should be the path after '/sites/SiteName/'
+            else:
+                site_path = ""
+        else:
+            site_path = path
+
+        return site_path
+
     def list_files(self, folder_path: str = "") -> List[str]:
         """List Excel files in SharePoint folder"""
+        folder_path = self._normalize_url(folder_path)
         folder_path = folder_path.lstrip("/")
         url = f"{self.base_url}/sites/{self.site_id}/drive/root"
 
@@ -71,6 +93,8 @@ class SharePointClient:
 
     def list_folders(self, folder_path: str = "") -> List[str]:
         """List subfolders in SharePoint folder"""
+        folder_path = self._normalize_url(folder_path)
+
         folder_path = folder_path.lstrip("/")
         url = f"{self.base_url}/sites/{self.site_id}/drive/root"
 
@@ -95,6 +119,8 @@ class SharePointClient:
 
     def download_file(self, file_path: str) -> BinaryIO:
         """Download file from SharePoint"""
+        file_path = self._normalize_url(file_path)
+
         file_path = file_path.lstrip("/")
         url = f"{self.base_url}/sites/{self.site_id}/drive/root:/{file_path}:/content"
 
@@ -107,6 +133,8 @@ class SharePointClient:
 
     def upload_file(self, content: Union[str, bytes], target_path: str) -> str:
         """Upload file to SharePoint"""
+        target_path = self._normalize_url(target_path)
+
         target_path = target_path.lstrip("/")
 
         if isinstance(content, str):
@@ -159,6 +187,7 @@ class SharePointClient:
 
     def get_folder_structure(self, root_folder: str = "") -> Dict[str, Dict]:
         """Get complete folder structure"""
+        root_folder = self._normalize_url(root_folder)
         structure = {}
         folders = self.list_folders(root_folder)
 
@@ -181,6 +210,8 @@ class SharePointClient:
         Returns:
             Web URL for the file or folder
         """
+        file_path = self._normalize_url(file_path)
+
         file_path = file_path.lstrip("/")
 
         # First try to get as a folder
@@ -212,6 +243,8 @@ class SharePointClient:
             local_path: Local path where to save the downloaded files
         """
         try:
+            folder_path = self._normalize_url(folder_path)
+
             folder_path = folder_path.lstrip("/")
             local_path = os.path.abspath(os.path.join(os.getcwd(), local_path))
 
