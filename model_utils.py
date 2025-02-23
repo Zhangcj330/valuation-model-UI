@@ -115,11 +115,9 @@ class SharePointModelDataHandler(ModelDataHandler):
     def download_assumptions(self, url: str) -> Dict[str, pd.DataFrame]:
         assumption_file = self.sp_client.download_file(url)
         # export to excel file
-        with open("assumptions.xlsx", "wb") as f:
-            f.write(assumption_file.getvalue())
         return {
-            "lapse_rate_table": pd.read_excel("assumptions.xlsx", sheet_name="lapse"),
-            "inflation_rate_table": pd.read_excel("assumptions.xlsx", sheet_name="CPI"),
+            "lapse_rate_table": pd.read_excel(assumption_file, sheet_name="lapse"),
+            "inflation_rate_table": pd.read_excel(assumption_file, sheet_name="CPI"),
             "prem_exp_table": pd.read_excel(
                 assumption_file, sheet_name="prem expenses"
             ),
@@ -156,8 +154,6 @@ class SharePointModelDataHandler(ModelDataHandler):
             if file.endswith(".xlsx") and file in product_groups:
                 file_content = self.sp_client.download_file(f"{url}/{file}")
                 df = pd.read_excel(file_content)
-                with open("model_points.xlsx", "wb") as f:
-                    f.write(file_content.getvalue())
                 model_points_dict[file] = df
         return model_points_dict
 

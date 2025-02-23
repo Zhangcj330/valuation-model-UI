@@ -7,7 +7,7 @@ import requests
 import app_config
 
 from model_utils import initialize_model, get_model_handler
-from settings_utils import load_settings, save_settings, validate_settings
+from settings_utils import load_config, save_config, ModelSettings
 from log import ModelLogger
 from s3_utils import S3Client
 from sharepoint_utils import SharePointClient
@@ -159,7 +159,7 @@ def display_settings_management(saved_settings):
         st.success("Settings loaded successfully!")
         st.rerun()
     if save_button:
-        save_settings(settings)
+        save_config(settings)
         st.success("Settings saved successfully!")
     return settings
 
@@ -407,12 +407,14 @@ def process_single_model_point(
     # Process and save results
     pv_df = model.Results.pv_results(0)
     analytics_df = model.Results.analytics()
+    rpg_aggregation_df = model.Results.RPG_aggregation(0)
 
     model.close()
 
     model_results = {
         "present_value": pv_df,
         "analytics": analytics_df,
+        "rpg_aggregation": rpg_aggregation_df,
         "model_points_count": len(model_points_df),
         "results_count": len(pv_df),
     }
@@ -427,6 +429,9 @@ def format_results(model_results):
         model_results["analytics"].to_excel(writer, sheet_name="analytics", index=False)
         model_results["present_value"].to_excel(
             writer, sheet_name="present_value", index=False
+        )
+        model_results["rpg_aggregation"].to_excel(
+            writer, sheet_name="rpg_aggregation", index=False
         )
     return output_buffer
 
@@ -464,9 +469,14 @@ def display_results(results):
             st.write(product_results["analytics"])
 
 
-def process_model_run(settings):
+def process_model_run(settings_dict):
     """Process the model run and display results"""
 
+    # Convert settings dictionary to ModelSettings object
+    settings = ModelSettings.from_dict(settings_dict)
+    settings.validate()  # Validate settings
+    validation_text = st.empty()
+    validation_text.success("Settings validated! Ready to run valuation model.")
     # Initialize progress tracking
     progress_bar, status_text, time_text = initialize_progress_indicators()
     start_time = datetime.datetime.now()
@@ -479,30 +489,29 @@ def process_model_run(settings):
             )
             # Download and process input files
             status_text.text("Downloading and processing input files...")
-            assumptions = handler.download_assumptions(settings["assumption_url"])
-            handler.download_model(
-                settings.get("models_url"), settings.get("model_name")
-            )
+            assumptions = handler.download_assumptions(settings.assumption_url)
+            handler.download_model(settings.models_url, settings.model_name)
+            print("download model success")
             model_points_list = handler.download_model_points(
-                settings["model_points_url"], settings["product_groups"]
+                settings.model_points_url, settings.product_groups
             )
             print("download success")
             # Initialize tracking variables
-            total_steps = len(settings["product_groups"]) * 2  # 2 steps per product
+            total_steps = len(settings.product_groups) * 2  # 2 steps per product
             current_step = 0
             progress_bar.progress(current_step / total_steps)
 
             results = {}
 
             # Process each product
-            for product_idx, product in enumerate(settings["product_groups"], 1):
+            for product_idx, product in enumerate(settings.product_groups, 1):
                 model_result, current_step = process_single_model_point(
                     product=product,
                     product_idx=product_idx,
-                    settings=settings,
+                    settings=settings_dict,  # Pass the original dict for logging
                     model_points_df=model_points_list[product],
                     assumptions=assumptions,
-                    total_products=len(settings["product_groups"]),
+                    total_products=len(settings.product_groups),
                     progress_bar=progress_bar,
                     current_step=current_step,
                     total_steps=total_steps,
@@ -513,7 +522,7 @@ def process_model_run(settings):
 
                 output_buffer = format_results(model_result)
                 output_filename = f"results_{product}_{output_timestamp}.xlsx"
-                output_path = f"{settings['results_url'].rstrip('/')}/{output_filename}"
+                output_path = f"{settings.results_url.rstrip('/')}/{output_filename}"
                 handler.save_results(output_buffer.getvalue(), output_path)
                 results[product] = model_result
 
@@ -523,12 +532,13 @@ def process_model_run(settings):
 
             # Log successful run
             logger.create_run_log(
-                settings=settings,
+                settings=settings_dict,  # Use the original dict for logging
                 start_time=start_time,
                 end_time=end_time,
                 status="success",
-                output_location=settings["results_url"],
+                output_location=settings.results_url,
             )
+            validation_text.empty()
 
             # Clear progress indicators and display results
             clear_progress_indicators(progress_bar, status_text, time_text)
@@ -536,10 +546,10 @@ def process_model_run(settings):
             st.session_state["results"] = results
             st.success(f"Model run completed successfully in {total_time:.1f} seconds!")
             if st.session_state.get("storage_type") == "SharePoint":
-                output_file_url = handler.get_file_url(settings["results_url"])
+                output_file_url = handler.get_file_url(settings.results_url)
                 st.write("Results saved to URL: %s" % output_file_url)
             else:
-                st.write("Results saved to: %s" % settings["results_url"])
+                st.write("Results saved to: %s" % settings.results_url)
 
         except Exception as e:
             # Clear progress indicators
@@ -548,7 +558,7 @@ def process_model_run(settings):
             end_time = datetime.datetime.now()
             # Log failed run
             logger.create_run_log(
-                settings=settings,
+                settings=settings_dict,  # Use the original dict for logging
                 start_time=start_time,
                 end_time=end_time,
                 status="error",
@@ -575,6 +585,8 @@ def convert_to_list(value):
 
 def process_batch_run(configurations):
     """Process each configuration in the batch run"""
+    rpg_aggregation = []  # List to store all results for stacking
+
     for config in configurations:
         st.write(f"Running configuration: {config['run_number']}")
         try:
@@ -585,19 +597,40 @@ def process_batch_run(configurations):
             config["product_groups"] = convert_to_list(config.get("product_groups", []))
             config["projection_period"] = int(config["projection_period"])
             # Validate settings
-            validate_settings(config, validate_required=True)
-            validation_text = st.empty()
-            validation_text.success("Settings validated! Ready to run valuation model.")
-            print(config)
             process_model_run(config)
-            validation_text.empty()
             if "results" not in st.session_state:
                 st.info("Run model to display the results")
             else:
                 display_results(st.session_state["results"])
+                # Collect results for stacking
+                for product, result in st.session_state["results"].items():
+                    result["rpg_aggregation"].insert(
+                        0,
+                        "run_number",
+                        [config["run_number"]] * len(result["rpg_aggregation"]),
+                    )
+                    rpg_aggregation.append(result["rpg_aggregation"])
+
             st.success(f"Run {config['run_number']} completed successfully!")
         except Exception as e:
             st.error(f"Error in run {config['run_number']}: {str(e)}")
+
+    # Stack all RPG aggregation results and export to Excel
+    if rpg_aggregation:
+        stacked_results = pd.concat(rpg_aggregation, ignore_index=True)
+        output_buffer = io.BytesIO()
+        with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
+            stacked_results.to_excel(writer, sheet_name="RPG Aggregation", index=False)
+        output_filename = f"batch_results_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+        # Get the parent directory by splitting the path and taking all but the last component
+        base_path = "/".join(
+            configurations[0]["results_url"].rstrip("/").split("/")[:-2]
+        )
+        output_path = f"{base_path}/{output_filename}"
+
+        handler = get_model_handler(st.session_state.get("storage_type", "SharePoint"))
+        handler.save_results(output_buffer.getvalue(), output_path)
+        st.success(f"Batch results saved to: {output_path}")
 
 
 def main():
@@ -625,7 +658,7 @@ def main():
     # Single Run tab
     with singlerun:
         # Settings management
-        saved_settings = load_settings()
+        saved_settings = load_config()
         with st.expander("Settings Management"):
             # Storage configuration section
             storage_type = st.radio(
@@ -648,11 +681,7 @@ def main():
 
         # Handle form submission
         if submitted:
-            validate_settings(settings, validate_required=True)
-            validation_text = st.empty()
-            validation_text.success("Settings validated! Ready to run valuation model.")
             process_model_run(settings)
-            validation_text.empty()
             st.subheader("Model Results")
             if "results" not in st.session_state:
                 st.info("Run model to display the results")

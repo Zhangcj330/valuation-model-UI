@@ -84,8 +84,7 @@ class SharePointClient:
             for item in items:
                 if "folder" not in item:  # If not a folder
                     name = item["name"]
-                    if name.endswith(".xlsx"):
-                        files.append(name)
+                    files.append(name)
 
             return sorted(files)
         except Exception as e:
@@ -269,7 +268,7 @@ class SharePointClient:
             def download_subfolder(
                 subfolder_structure, current_path, current_local_path
             ):
-                for folder_name, content in subfolder_structure.items():
+                for folder_name, folder_content in subfolder_structure.items():
                     folder_path = f"{current_path}/{folder_name}".lstrip("/")
                     new_local_path = os.path.join(current_local_path, folder_name)
 
@@ -278,17 +277,17 @@ class SharePointClient:
                         os.makedirs(new_local_path)
 
                     # Download files in this subfolder
-                    for file in content["files"]:
+                    for file in folder_content["files"]:
                         file_path = f"{folder_path}/{file}".lstrip("/")
                         local_file_path = os.path.join(new_local_path, file)
 
-                        content = self.download_file(file_path)
+                        file_content = self.download_file(file_path)
                         with open(local_file_path, "wb") as f:
-                            f.write(content.getvalue())
+                            f.write(file_content.getvalue())
 
                     # Process subfolders recursively
                     download_subfolder(
-                        content["subfolders"], folder_path, new_local_path
+                        folder_content["subfolders"], folder_path, new_local_path
                     )
 
             # Start recursive download for subfolders

@@ -1,14 +1,14 @@
 {
     "s3_assumption_url": "s3://valuation-model/term/run2/Assumptions/Assumptions 2.xlsx",
-    "assumption_url": "Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/Assumptions/Assumptions.xlsx",
+    "assumption_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/Assumptions/Assumptions.xlsx",
     "s3_models_url": "s3://valuation-model/term/run2/models",
-    "models_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/models",
+    "models_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/models",
     "s3_model_points_url": "s3://valuation-model/term/run2/model point files",
-    "model_points_url": "Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/model%20point%20files",
+    "model_points_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/model%20point%20files",
     "s3_results_url": "s3://valuation-model/term/run2/output",
-    "results_url": "Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/outputs",
-    "sp_assumption_url": "Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/Assumptions/Assumptions.xlsx",
-    "sp_models_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/models",
-    "sp_model_points_url": "Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/model%20point%20files",
-    "sp_results_url": "Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/Run1/outputs"
+    "results_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/outputs",
+    "sp_assumption_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/Assumptions/Assumptions.xlsx",
+    "sp_models_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/models",
+    "sp_model_points_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/model%20point%20files",
+    "sp_results_url": "https://datalyactuarial.sharepoint.com/sites/DatalyActuarial/Shared%20Documents/Business%20Development%20and%20Thought%20Leadership/Valuation%20Model%20Development/demo/Run1/outputs"
 }

@@ -36,12 +36,20 @@ class ModelLogger:
         user_name = user_info.get("displayName", "unknown")
         user_email = user_info.get("mail", "unknown")
 
+        # Determine storage type and set paths accordingly
+        assumption_table_url = settings.get("assumption_url", "")
+        model_point_files_url = settings.get("model_points_url", "")
+        models_url = settings.get("models_url", "")
+        model_name = settings.get("model_name", "")
+
         log_entry = {
             "run_timestamp": start_time.isoformat(),
             "user": {"name": user_name, "email": user_email},
             "inputs": {
-                "assumption_table": settings.get("assumption_table_url", ""),
-                "model_point_files": settings.get("model_point_files_url", ""),
+                "assumption_table": assumption_table_url,
+                "model_point_files": model_point_files_url,
+                "models_url": models_url,
+                "model_name": model_name,
                 "valuation_date": settings["valuation_date"].isoformat(),
                 "projection_period": settings["projection_period"],
                 "product_groups": settings["product_groups"],
