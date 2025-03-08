@@ -12,7 +12,6 @@ class SharePointClient:
         """Initialize SharePoint client using user's access token"""
         if not st.session_state.get("token"):
             raise ValueError("No authentication token found in session state")
-
         self.token = st.session_state.token["access_token"]
         self.headers = {
             "Authorization": f"Bearer {self.token}",

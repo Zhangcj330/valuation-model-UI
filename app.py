@@ -6,7 +6,7 @@ import msal
 import requests
 import app_config
 
-from model_utils import initialize_model, get_model_handler
+from model_utils import initialize_model_IP, initialize_model_LS, get_model_handler
 from settings_utils import load_config, save_config, ModelSettings
 from log import ModelLogger
 from s3_utils import S3Client
@@ -107,7 +107,7 @@ def display_settings_management(saved_settings):
         "assumption_url": {
             "label": "Assumptions Path",
             "help": {
-                "S3": "Format: s3://bucket-name/path/to/file.xlsx",
+                "S3": "Format: s3://bucket-name/path/to/assumptions/folder/",
                 "SharePoint": "Enter the relative path to the assumptions folder",
             },
         },
@@ -381,7 +381,7 @@ def clear_progress_indicators(progress_bar, status_text, time_text):
     time_text.empty()
 
 
-def process_single_model_point(
+def process_single_model_point_LS(
     product,
     product_idx,
     settings,
@@ -399,7 +399,7 @@ def process_single_model_point(
     # Run model
     proj_period = settings["projection_period"]
     val_date = settings["valuation_date"]
-    model = initialize_model(assumptions, model_points_df, proj_period, val_date)
+    model = initialize_model_LS(assumptions, model_points_df, proj_period, val_date)
 
     current_step += 1
     progress_bar.progress(current_step / total_steps)
@@ -423,12 +423,64 @@ def process_single_model_point(
     return model_results, current_step
 
 
-def format_results(model_results):
+def process_single_model_point_IP(
+    product,
+    product_idx,
+    settings,
+    model_points_df,
+    assumptions,
+    total_products,
+    progress_bar,
+    current_step,
+    total_steps,
+):
+    """Process a single product and return its results"""
+    status_text = st.empty()
+    status_text.text(f"Processing {product}... ({product_idx}/{total_products})")
+
+    # Run model
+    proj_period = settings["projection_period"]
+    val_date = settings["valuation_date"]
+    model = initialize_model_IP(assumptions, model_points_df, proj_period, val_date)
+
+    current_step += 1
+    progress_bar.progress(current_step / total_steps)
+
+    # Process and save results
+    pv_df = model.Results.cashflow_claims_PV_calc()
+    rpg_aggregation_df = model.Results.rpg_aggregate()
+
+    model.close()
+
+    model_results = {
+        "cashflow_output": pv_df,
+        "rpg_aggregation": rpg_aggregation_df,
+        "model_points_count": len(model_points_df),
+        "results_count": len(pv_df),
+    }
+    status_text.empty()
+
+    return model_results, current_step
+
+
+def format_results_LS(model_results):
     output_buffer = io.BytesIO()
     with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
         model_results["analytics"].to_excel(writer, sheet_name="analytics", index=False)
         model_results["present_value"].to_excel(
             writer, sheet_name="present_value", index=False
+        )
+        model_results["rpg_aggregation"].to_excel(
+            writer, sheet_name="rpg_aggregation", index=False
+        )
+    return output_buffer
+
+
+def format_results_IP(model_results):
+    output_buffer = io.BytesIO()
+    with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
+        model_results["cashflow_output"].to_excel(
+            writer, sheet_name="cashflow_output", index=False
         )
         model_results["rpg_aggregation"].to_excel(
             writer, sheet_name="rpg_aggregation", index=False
@@ -489,42 +541,84 @@ def process_model_run(settings_dict):
             )
             # Download and process input files
             status_text.text("Downloading and processing input files...")
-            assumptions = handler.download_assumptions(settings.assumption_url)
             handler.download_model(settings.models_url, settings.model_name)
-            print("download model success")
-            model_points_list = handler.download_model_points(
-                settings.model_points_url, settings.product_groups
-            )
-            print("download success")
-            # Initialize tracking variables
-            total_steps = len(settings.product_groups) * 2  # 2 steps per product
-            current_step = 0
-            progress_bar.progress(current_step / total_steps)
-
-            results = {}
-
-            # Process each product
-            for product_idx, product in enumerate(settings.product_groups, 1):
-                model_result, current_step = process_single_model_point(
-                    product=product,
-                    product_idx=product_idx,
-                    settings=settings_dict,  # Pass the original dict for logging
-                    model_points_df=model_points_list[product],
-                    assumptions=assumptions,
-                    total_products=len(settings.product_groups),
-                    progress_bar=progress_bar,
-                    current_step=current_step,
-                    total_steps=total_steps,
+            print(settings.model_name)
+            # Download and process assumptions files based on the model name
+            if "IP" in settings.model_name:
+                print("downloading assumptions IP")
+                assumptions = handler.download_assumptions_IP(settings.assumption_url)
+                print("downloading model points IP")
+                model_points_list = handler.download_model_points(
+                    settings.model_points_url, settings.product_groups
                 )
-
-                current_step += 1
+                # Initialize tracking variables
+                total_steps = len(settings.product_groups) * 2  # 2 steps per product
+                current_step = 0
                 progress_bar.progress(current_step / total_steps)
 
-                output_buffer = format_results(model_result)
-                output_filename = f"results_{product}_{output_timestamp}.xlsx"
-                output_path = f"{settings.results_url.rstrip('/')}/{output_filename}"
-                handler.save_results(output_buffer.getvalue(), output_path)
-                results[product] = model_result
+                results = {}
+                print("processing IP")
+                for product_idx, product in enumerate(settings.product_groups, 1):
+                    model_result, current_step = process_single_model_point_IP(
+                        product=product,
+                        product_idx=product_idx,
+                        settings=settings_dict,  # Pass the original dict for logging
+                        model_points_df=model_points_list[product],
+                        assumptions=assumptions,
+                        total_products=len(settings.product_groups),
+                        progress_bar=progress_bar,
+                        current_step=current_step,
+                        total_steps=total_steps,
+                    )
+
+                    print("processed IP")
+
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+
+                    output_buffer = format_results_IP(model_result)
+                    output_filename = f"results_{product}_{output_timestamp}.xlsx"
+                    output_path = (
+                        f"{settings.results_url.rstrip('/')}/{output_filename}"
+                    )
+                    handler.save_results(output_buffer.getvalue(), output_path)
+                    results[product] = model_result
+
+            else:
+                assumptions = handler.download_assumptions_LS(settings.assumption_url)
+                print("downloading model points LS")
+                model_points_list = handler.download_model_points(
+                    settings.model_points_url, settings.product_groups
+                )
+                # Initialize tracking variables
+                total_steps = len(settings.product_groups) * 2  # 2 steps per product
+                current_step = 0
+                progress_bar.progress(current_step / total_steps)
+                results = {}
+
+                for product_idx, product in enumerate(settings.product_groups, 1):
+                    model_result, current_step = process_single_model_point_LS(
+                        product=product,
+                        product_idx=product_idx,
+                        settings=settings_dict,  # Pass the original dict for logging
+                        model_points_df=model_points_list[product],
+                        assumptions=assumptions,
+                        total_products=len(settings.product_groups),
+                        progress_bar=progress_bar,
+                        current_step=current_step,
+                        total_steps=total_steps,
+                    )
+
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+
+                    output_buffer = format_results_LS(model_result)
+                    output_filename = f"results_{product}_{output_timestamp}.xlsx"
+                    output_path = (
+                        f"{settings.results_url.rstrip('/')}/{output_filename}"
+                    )
+                    handler.save_results(output_buffer.getvalue(), output_path)
+                    results[product] = model_result
 
             # Calculate total time
             end_time = datetime.datetime.now()
