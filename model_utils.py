@@ -249,6 +249,20 @@ def initialize_model_LS(
     return model
 
 
+def update_val_date(df, new_date):
+    """
+    Update the value in assumptions["Variables"] where Variable is "Val date"
+
+    """
+    # Convert new_date to datetime format if it's a string
+    if isinstance(new_date, str):
+        new_date = pd.to_datetime(new_date)
+
+    # Find and update the Val date row
+    mask = df["Variable"] == "Val date"
+    df.loc[mask, "Value"] = new_date
+
+
 def initialize_model_IP(
     assumptions: Dict[str, pd.DataFrame],
     model_points_df: pd.DataFrame,
@@ -288,6 +302,10 @@ def initialize_model_IP(
     model.Assumptions.Prem_related_expenses = assumptions["Prem_related_expenses"]
     model.Assumptions.Fixed_expenses = assumptions["Fixed_expenses"]
     model.Assumptions.Risk_adj_pc = assumptions["Risk_adj_pc"]
+
+    # update val date
+    formatted_val_date = pd.to_datetime(val_date)
+    update_val_date(assumptions["Variables"], formatted_val_date)
     model.Assumptions.Valuation_Variables = assumptions["Variables"]
 
     # Death Only Tables

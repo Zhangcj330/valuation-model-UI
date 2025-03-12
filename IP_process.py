@@ -23,7 +23,7 @@ def transform_assumptions(assumptions_dict):
 
     for table in mapping_tables:
         if table in assumptions_dict:
-            transformed[table] = assumptions_dict[table]
+            transformed[table] = assumptions_dict[table].copy()
 
     # 1. Simple direct assignments (no transformations needed)
     simple_tables = [
@@ -31,10 +31,6 @@ def transform_assumptions(assumptions_dict):
         "Lapse",
         "TPD",
         "Trauma",
-        "Prem_rate_level",
-        "Prem_rate_stepped",
-        "Rein_Prem_rate_level",
-        "Rein_Prem_rate_stepped",
         "Monthly_discount_rates",
         "Commission_rates",
         "Prem_related_expenses",
@@ -47,11 +43,26 @@ def transform_assumptions(assumptions_dict):
 
     for table in simple_tables:
         if table in assumptions_dict:
-            transformed[table] = assumptions_dict[table]
+            transformed[table] = assumptions_dict[table].copy()
+
+    # Premium rate tables with Y/N to S/N transformation
+    premium_tables = [
+        "Prem_rate_level",
+        "Prem_rate_stepped",
+        "Rein_Prem_rate_level",
+        "Rein_Prem_rate_stepped",
+    ]
+
+    for table in premium_tables:
+        if table in assumptions_dict:
+            df = assumptions_dict[table].copy()
+            # Only transform the 'Smoker status' column
+            df["Smoker status"] = df["Smoker status"].map({"Y": "S", "N": "N"})
+            transformed[table] = df
 
     # 2. Death Only Mortality transformations
-    df = assumptions_dict["DeathOnly_mort_age_rates"]
-    Death_Only_Mort_Age_Rates = df.rename(
+    df_death_only_mort = assumptions_dict["DeathOnly_mort_age_rates"].copy()
+    Death_Only_Mort_Age_Rates = df_death_only_mort.rename(
         columns={
             "Sex": "sex",
             "Age last birthday at last policy anniversary": "Age LB",
@@ -68,10 +79,10 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 3. Death Only Duration Loading
-    df = assumptions_dict["DeathOnly_duration_loading"]
+    df_death_only_duration = assumptions_dict["DeathOnly_duration_loading"].copy()
     transformed["Death_Only_Duration_Loading"] = (
         pd.melt(
-            df,
+            df_death_only_duration,
             id_vars=["Policy Duration (Curtate Years)"],
             var_name="sex",
             value_name="Duration Loading",
@@ -87,8 +98,8 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 4. Incidence Age Rates (Female)
-    df = assumptions_dict["Incidence_age_rates_females"]
-    transformed["Incidence_Age_Rates_Female"] = df.rename(
+    df_incidence_female = assumptions_dict["Incidence_age_rates_females"].copy()
+    transformed["Incidence_Age_Rates_Female"] = df_incidence_female.rename(
         columns={
             "Age": "Age LB",
             "Accident": "Accident Age Rates",
@@ -97,8 +108,8 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 5. Incidence Age Rates (Male)
-    df = assumptions_dict["Incidence_age_rates_males"]
-    male_rates = df.rename(columns={"Age": "Age LB"})
+    df_incidence_male = assumptions_dict["Incidence_age_rates_males"].copy()
+    male_rates = df_incidence_male.rename(columns={"Age": "Age LB"})
     transformed["Incidence_Age_Rates_Male"] = pd.melt(
         male_rates,
         id_vars=["Sex", "Age LB"],
@@ -117,8 +128,8 @@ def transform_assumptions(assumptions_dict):
     ]
 
     # 6. Incidence Lifetime Benefit Period
-    df = assumptions_dict["Incidence_lifetime_bene_period"]
-    transformed["Incidence_Lifetime_Benefit_Period"] = df.rename(
+    df_lifetime_benefit = assumptions_dict["Incidence_lifetime_bene_period"].copy()
+    transformed["Incidence_Lifetime_Benefit_Period"] = df_lifetime_benefit.rename(
         columns={
             "Accident": "Accident Lifetime Factor",
             "Sickness": "Sick Lifetime Factor",
@@ -127,7 +138,7 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 7. Incidence Waiting Period
-    df = assumptions_dict["Incidence_waiting_period"]
+    df_waiting_period = assumptions_dict["Incidence_waiting_period"].copy()
     occupation_mapping = {
         "Professional/Medical": "P",
         "White Collar": "W",
@@ -136,7 +147,7 @@ def transform_assumptions(assumptions_dict):
         "Blue/Heavy Blue Collar": "B",
     }
     waiting_period = pd.melt(
-        df,
+        df_waiting_period,
         id_vars=["Type", "Sex", "Waiting_Period"],
         var_name="Occupation",
         value_name="Waiting Factor",
@@ -155,17 +166,21 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 8. Incidence Smoking Status
-    df = assumptions_dict["Incidence_smoking_status"]
+    df_smoking_status = assumptions_dict["Incidence_smoking_status"].copy()
     occupation_mapping = {
         "Combined White Collar": ["W", "P"],
         "Combined Blue Collar": ["S", "T", "B"],
     }
+    smoking_mapping = {"Smoker": "S", "Non-smoker": "N"}
 
     smoking_status = pd.melt(
-        df,
+        df_smoking_status,
         id_vars=["Type", "Sex", "Smoking_Status"],
         var_name="Occupation Type",
         value_name="Smoker Factor",
+    )
+    smoking_status["Smoking_Status"] = smoking_status["Smoking_Status"].map(
+        smoking_mapping
     )
 
     expanded_rows = []
@@ -196,11 +211,11 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 9. Incidence Benefit Type
-    df = assumptions_dict["Incidence_benefit_type"]
+    df_benefit_type = assumptions_dict["Incidence_benefit_type"].copy()
     benefit_type_mapping = {"Agreed Value": "A", "Indemnity": "I"}
 
     benefit_type = pd.melt(
-        df,
+        df_benefit_type,
         id_vars=["Type", "Sex", "Benefit Type"],
         var_name="Occupation Type",
         value_name="Benefit Type Factor",
@@ -237,8 +252,8 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 10. Incidence Duration Loading
-    df = assumptions_dict["Incidence_duration_loading"]
-    transformed["Incidence_Duration_Loading"] = df.assign(
+    df_duration_loading = assumptions_dict["Incidence_duration_loading"].copy()
+    transformed["Incidence_Duration_Loading"] = df_duration_loading.assign(
         **{
             "Policy Duration (Curtate Years)": lambda x: x[
                 "Policy Duration (Curtate Years)"
@@ -252,23 +267,27 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 11. Incidence Age Rates Sickness Combined
-    df_f = assumptions_dict["Incidence_age_rates_females"][["Sex", "Age", "Sickness"]]
-    df_m = assumptions_dict["Incidence_age_rates_males"][["Sex", "Age", "Sickness"]]
+    df_sickness_female = assumptions_dict["Incidence_age_rates_females"][
+        ["Sex", "Age", "Sickness"]
+    ].copy()
+    df_sickness_male = assumptions_dict["Incidence_age_rates_males"][
+        ["Sex", "Age", "Sickness"]
+    ].copy()
 
-    df_f = df_f.rename(
+    df_sickness_female = df_sickness_female.rename(
         columns={"Age": "Age LB", "Sex": "sex", "Sickness": "Sick Age Rates"}
     )
-    df_m = df_m.rename(
+    df_sickness_male = df_sickness_male.rename(
         columns={"Age": "Age LB", "Sex": "sex", "Sickness": "Sick Age Rates"}
     )
 
     transformed["Incidence_Age_Rates_Sickness_Combined"] = pd.concat(
-        [df_m, df_f], ignore_index=True
+        [df_sickness_male, df_sickness_female], ignore_index=True
     )
 
     # 12. Death Only Mortality Floor
-    df = assumptions_dict["DeathOnly_mort_floor"]
-    mortality_floor = df[["Age LB", "225% MS", "225% FS"]].rename(
+    df_mortality_floor = assumptions_dict["DeathOnly_mort_floor"].copy()
+    mortality_floor = df_mortality_floor[["Age LB", "225% MS", "225% FS"]].rename(
         columns={"225% MS": "M", "225% FS": "F"}
     )
     transformed["Death_Only_Mortality_Floor"] = pd.melt(
@@ -279,8 +298,8 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 13. Termination Age Rates
-    df = assumptions_dict["Termination_age_rates"]
-    termination_rates = df.rename(
+    df_termination_rates = assumptions_dict["Termination_age_rates"].copy()
+    termination_rates = df_termination_rates.rename(
         columns={
             "Age last birthday at last policy anniversary at Date of Disablement \ Gender": "Age LB",
             "Male": "M",
@@ -295,22 +314,24 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 14. Termination Smoker
-    df = assumptions_dict["Termination_smoker"]
-    transformed["Termination_Smoker"] = df.rename(
+    df_termination_smoker = assumptions_dict["Termination_smoker"].copy()
+    transformed["Termination_Smoker"] = df_termination_smoker.rename(
         columns={"Smoker Status": "Smoker status", "Rate": "Termination Smoker status"}
     )
 
     # 15. Termination Benefit Type
-    df = assumptions_dict["Termination_benefit_type"]
+    df_termination_benefit = assumptions_dict["Termination_benefit_type"].copy()
     benefit_type_mapping = {"Agreed Value": "A", "Indemnity": "I"}
-    transformed["Termination_Benefit_Type"] = df.rename(
+    transformed["Termination_Benefit_Type"] = df_termination_benefit.rename(
         columns={"Rates": "Termination Benefit Type"}
     ).assign(**{"Benefit Type": lambda x: x["Benefit Type"].map(benefit_type_mapping)})
 
     # 16. Termination Duration Factor Accident
-    df = assumptions_dict["Termination_duration_factor_acc"]
+    df_termination_duration_acc = assumptions_dict[
+        "Termination_duration_factor_acc"
+    ].copy()
     transformed["Termination_Duration_Factor_Accident"] = (
-        df.rename(
+        df_termination_duration_acc.rename(
             columns={
                 "Curtate Policy Year": "Policy Year_10+",
                 "Sex": "sex",
@@ -322,8 +343,8 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 17. Termination Duration Claim Accident
-    df = assumptions_dict["Termination_duration_claim_acc"]
-    transformed["Termination_Duration_Claim_Acc"] = df.rename(
+    df_termination_claim_acc = assumptions_dict["Termination_duration_claim_acc"].copy()
+    transformed["Termination_Duration_Claim_Acc"] = df_termination_claim_acc.rename(
         columns={
             "Sex": "sex",
             "Waiting_period": "Waiting Period",
@@ -332,8 +353,10 @@ def transform_assumptions(assumptions_dict):
     ).assign(**{"Claim Duration": lambda x: x["Claim Duration"].astype(int)})
 
     # 18. Termination Benefit Period
-    df = assumptions_dict["Termination_benefit_period"]
-    transformed["Termination_Benefit_Period"] = df.rename(
+    df_termination_benefit_period = assumptions_dict[
+        "Termination_benefit_period"
+    ].copy()
+    transformed["Termination_Benefit_Period"] = df_termination_benefit_period.rename(
         columns={
             "Duration since Disablement (Years***)": "Claim Duration_6+",
             "Benefit Period": "Benefit Period_65+",
@@ -347,9 +370,11 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 19. Termination Duration Factor Sickness
-    df = assumptions_dict["Termination_duration_factor_sic"]
+    df_termination_duration_sick = assumptions_dict[
+        "Termination_duration_factor_sic"
+    ].copy()
     transformed["Termination_Duration_Factor_Sickness"] = (
-        df.rename(
+        df_termination_duration_sick.rename(
             columns={
                 "Curtate Policy Year": "Policy Year_10+",
                 "Sex": "sex",
@@ -361,8 +386,10 @@ def transform_assumptions(assumptions_dict):
     )
 
     # 20. Termination Duration Claim Sickness
-    df = assumptions_dict["Termination_duration_claim_sick"]
-    transformed["Termination_Duration_Claim_Sick"] = df.rename(
+    df_termination_claim_sick = assumptions_dict[
+        "Termination_duration_claim_sick"
+    ].copy()
+    transformed["Termination_Duration_Claim_Sick"] = df_termination_claim_sick.rename(
         columns={
             "Sex": "sex",
             "Waiting_period": "Waiting Period",
@@ -371,134 +398,39 @@ def transform_assumptions(assumptions_dict):
     ).assign(**{"Claim Duration": lambda x: x["Claim Duration"].astype(int)})
 
     # 21. Inflation
-    df = assumptions_dict["Inflation"]
-    try:
-        # First try parsing with pandas default parser
-        df["Date"] = pd.to_datetime(df["Year"], format="mixed", dayfirst=True)
-    except Exception:
-        # Fallback method if the first attempt fails
-        df["Date"] = pd.to_datetime(df["Year"], format="%Y-%m-%d", errors="coerce")
+    df_inflation = assumptions_dict["Inflation"].copy()
+    # 拆分年月日并重新组装
+    df_inflation["Year_Year"] = df_inflation["Year"].dt.year
+    df_inflation["Year_Month"] = df_inflation["Year"].dt.day
+    df_inflation["Year_Day"] = df_inflation["Year"].dt.month
+    df_inflation["Date"] = pd.to_datetime(
+        df_inflation["Year_Year"].astype(str)
+        + "-"
+        + df_inflation["Year_Month"].astype(str)
+        + "-"
+        + df_inflation["Year_Day"].astype(str)
+    ).dt.strftime("%Y-%m-%d %H:%M:%S")
+    # 删除临时列
+    df_inflation.drop(
+        columns=["Year", "Year_Year", "Year_Month", "Year_Day"], inplace=True
+    )
+    transformed["Inflation"] = df_inflation
 
-    transformed["Inflation"] = df.rename(columns={"Year": "Date"})
-
-    # 22. Forward Rate
-    df = assumptions_dict["Forward_rates"]
-    try:
-        # First try parsing with pandas default parser
-        df["Month"] = pd.to_datetime(df["Month"], format="mixed", dayfirst=True)
-    except Exception:
-        # Fallback method if the first attempt fails
-        df["Month"] = pd.to_datetime(df["Month"], format="%Y-%m-%d", errors="coerce")
-
-    transformed["Forward_rate"] = df
+    # 21. Forward Rate
+    df_forward = assumptions_dict["Forward_rates"].copy()
+    # 对 Forward Rate 做同样的处理
+    df_forward["Year_Year"] = df_forward["Month"].dt.year
+    df_forward["Year_Month"] = df_forward["Month"].dt.day
+    df_forward["Year_Day"] = df_forward["Month"].dt.month
+    df_forward["Year"] = pd.to_datetime(
+        df_forward["Year_Year"].astype(str)
+        + "-"
+        + df_forward["Year_Month"].astype(str)
+        + "-"
+        + df_forward["Year_Day"].astype(str)
+    ).dt.strftime("%Y-%m-%d %H:%M:%S")
+    # 删除临时列
+    df_forward.drop(columns=["Year_Year", "Year_Month", "Year_Day"], inplace=True)
+    transformed["Forward_rate"] = df_forward
 
     return transformed
-
-
-def update_model_spaces(Mapping_space, Assumptions_space, assumptions):
-    """
-    Update model spaces with transformed assumptions
-
-    Args:
-        Mapping_space: ModelX space for mapping tables
-        Assumptions_space: ModelX space for assumption tables
-        assumptions: Dictionary of transformed assumptions
-    """
-    try:
-        # Update Mapping Tables
-        Mapping_space.Occupation = assumptions["Occupation"]
-        Mapping_space.Waiting_period = assumptions["Waiting_period"]
-        Mapping_space.Smoker = assumptions["Smoker"]
-        Mapping_space.Benefit_period = assumptions["Benefit_period"]
-        Mapping_space.Prem_payment_freq = assumptions["Prem_payment_freq"]
-
-        # Update Assumption Tables
-        # Reference Tables
-        Assumptions_space.Mortality = assumptions["Mortality"]
-        Assumptions_space.Lapse = assumptions["Lapse"]
-        Assumptions_space.TPD = assumptions["TPD"]
-        Assumptions_space.Trauma = assumptions["Trauma"]
-        Assumptions_space.Prem_Rate_Level = assumptions["Prem_Rate_Level"]
-        Assumptions_space.Prem_Rate_Stepped = assumptions["Prem_Rate_Stepped"]
-        Assumptions_space.Rein_Prem_Rate_Level = assumptions["Rein_Prem_Rate_Level"]
-        Assumptions_space.Rein_Prem_Rate_Stepped = assumptions["Rein_Prem_Rate_Stepped"]
-
-        # Economic Assumptions
-        Assumptions_space.Mth_Discount_rate = assumptions["Mth_Discount_rate"]
-        Assumptions_space.Inflation = assumptions["Inflation"]
-        Assumptions_space.Forward_rate = assumptions["Forward_rate"]
-
-        # Expense and Commission
-        Assumptions_space.Commission_rate = assumptions["Commission_rate"]
-        Assumptions_space.Prem_related_expenses = assumptions["Prem_related_expenses"]
-        Assumptions_space.Fixed_expenses = assumptions["Fixed_expenses"]
-        Assumptions_space.Risk_adj_pc = assumptions["Risk_adj_pc"]
-        Assumptions_space.Valuation_Variables = assumptions["Valuation_Variables"]
-
-        # Death Only Tables
-        Assumptions_space.Death_Only_Mort_Age_Rates = assumptions[
-            "Death_Only_Mort_Age_Rates"
-        ]
-        Assumptions_space.Death_Only_Duration_Loading = assumptions[
-            "Death_Only_Duration_Loading"
-        ]
-        Assumptions_space.Death_Only_Mortality_Floor = assumptions[
-            "Death_Only_Mortality_Floor"
-        ]
-
-        # Incidence Tables
-        Assumptions_space.Incidence_Age_Rates_Female = assumptions[
-            "Incidence_Age_Rates_Female"
-        ]
-        Assumptions_space.Incidence_Age_Rates_Male = assumptions[
-            "Incidence_Age_Rates_Male"
-        ]
-        Assumptions_space.Incidence_Lifetime_Benefit_Period = assumptions[
-            "Incidence_Lifetime_Benefit_Period"
-        ]
-        Assumptions_space.Incidence_Waiting_Period = assumptions[
-            "Incidence_Waiting_Period"
-        ]
-        Assumptions_space.Incidence_Smoking_Status = assumptions[
-            "Incidence_Smoking_Status"
-        ]
-        Assumptions_space.Incidence_Benefit_Type = assumptions["Incidence_Benefit_Type"]
-        Assumptions_space.Incidence_Duration_Loading = assumptions[
-            "Incidence_Duration_Loading"
-        ]
-        Assumptions_space.Incidence_Age_Rates_Sickness_Combined = assumptions[
-            "Incidence_Age_Rates_Sickness_Combined"
-        ]
-
-        # Termination Tables
-        Assumptions_space.Termination_Age_Rates = assumptions["Termination_Age_Rates"]
-        Assumptions_space.Termination_Duration_Claim_Acc = assumptions[
-            "Termination_Duration_Claim_Acc"
-        ]
-        Assumptions_space.Termination_Duration_Claim_Sick = assumptions[
-            "Termination_Duration_Claim_Sick"
-        ]
-        Assumptions_space.Termination_Smoker = assumptions["Termination_Smoker"]
-        Assumptions_space.Termination_Benefit_Type = assumptions[
-            "Termination_Benefit_Type"
-        ]
-        Assumptions_space.Termination_Duration_Factor_Accident = assumptions[
-            "Termination_Duration_Factor_Accident"
-        ]
-        Assumptions_space.Termination_Benefit_Period = assumptions[
-            "Termination_Benefit_Period"
-        ]
-        Assumptions_space.Termination_Duration_Factor_Sickness = assumptions[
-            "Termination_Duration_Factor_Sickness"
-        ]
-        Assumptions_space.Termination_New_Claim = assumptions["Termination_New_Claim"]
-        Assumptions_space.Termination_Cause_Sickness = assumptions[
-            "Termination_Cause_Sickness"
-        ]
-
-        print("Successfully updated all model spaces")
-
-    except KeyError as e:
-        print(f"Error: Missing assumption table: {str(e)}")
-    except Exception as e:
-        print(f"Error updating model spaces: {str(e)}")
