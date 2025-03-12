@@ -1,0 +1,15 @@
+{
+    "Product": ["C_TERM", "H_IP"],
+    "sex": ["M", "F"],
+    "pols_if_init": ["0", "1"],
+    "Prem Freq": ["1", "2", "4", "12"],
+    "Prem_Increase_ind": ["0", "1"],
+    "Smoker status": ["Y", "N"],
+    "Stepped_ind": ["0", "1"],
+    "Occupation": ["W", "B", "P", "S", "T"],
+    "Waiting Period": ["1", "14", "30", "60", "90"],
+    "Benefit Period Type": ["T", "A"],
+    "Benefit Period": ["1", "2", "5", "65", "70"],
+    "Benefit Type": ["A", "I"],
+    "Prem Waiver": ["0", "1"]
+}

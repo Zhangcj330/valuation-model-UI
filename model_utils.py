@@ -294,6 +294,7 @@ def initialize_model_IP(
 
     # Economic Assumptions
     model.Assumptions.Mth_Discount_rate = assumptions["Monthly_discount_rates"]
+
     model.Assumptions.Inflation = assumptions["Inflation"]
     model.Assumptions.Forward_rate = assumptions["Forward_rate"]
 
