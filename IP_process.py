@@ -409,7 +409,7 @@ def transform_assumptions(assumptions_dict):
         + df_inflation["Year_Month"].astype(str)
         + "-"
         + df_inflation["Year_Day"].astype(str)
-    ).dt.strftime("%Y-%m-%d %H:%M:%S")
+    )
     # 删除临时列
     df_inflation.drop(
         columns=["Year", "Year_Year", "Year_Month", "Year_Day"], inplace=True
@@ -422,13 +422,13 @@ def transform_assumptions(assumptions_dict):
     df_forward["Year_Year"] = df_forward["Month"].dt.year
     df_forward["Year_Month"] = df_forward["Month"].dt.day
     df_forward["Year_Day"] = df_forward["Month"].dt.month
-    df_forward["Year"] = pd.to_datetime(
+    df_forward["Month"] = pd.to_datetime(
         df_forward["Year_Year"].astype(str)
         + "-"
         + df_forward["Year_Month"].astype(str)
         + "-"
         + df_forward["Year_Day"].astype(str)
-    ).dt.strftime("%Y-%m-%d %H:%M:%S")
+    )
     # 删除临时列
     df_forward.drop(columns=["Year_Year", "Year_Month", "Year_Day"], inplace=True)
     transformed["Forward_rate"] = df_forward

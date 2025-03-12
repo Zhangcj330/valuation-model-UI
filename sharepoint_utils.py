@@ -8,11 +8,17 @@ from urllib.parse import unquote, urlparse
 
 
 class SharePointClient:
-    def __init__(self):
+    def __init__(self, token: str = None):
         """Initialize SharePoint client using user's access token"""
-        if not st.session_state.get("token"):
-            raise ValueError("No authentication token found in session state")
-        self.token = st.session_state.token["access_token"]
+        # Get token from parameter or session state
+        if token:
+            self.token = token
+        else:
+            self.token = st.session_state.get("token", {}).get("access_token")
+        if not self.token:
+            raise ValueError(
+                "No authentication token found in parameter or session state"
+            )
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",

@@ -29,8 +29,9 @@ class MPFValidator:
             df_rules: 规则数据DataFrame，如果为None则需要在调用验证方法前设置
             validation_date: 验证日期，格式为YYYY-MM-DD，默认为今天
         """
-        self.df_mpf = df_mpf
-        self.df_rules = df_rules
+        # 创建输入DataFrame的深拷贝，避免修改原始数据
+        self.df_mpf = df_mpf.copy(deep=True)
+        self.df_rules = df_rules.copy(deep=True) if df_rules is not None else None
 
         # 设置验证日期，默认为今天
         if validation_date:
@@ -267,11 +268,11 @@ class MPFValidator:
         min_date = today - timedelta(days=65 * 365)  # 65年前
         max_date = today - timedelta(days=18 * 365)  # 18年前
 
-        # 确保DOB是字符串，清理空格，并转换为datetime
-        self.df_mpf["DOB"] = self.df_mpf["DOB"].astype(str).str.strip()
+        # 创建临时列，而不是修改原始列
+        dob_cleaned = self.df_mpf["DOB"].astype(str).str.strip()
 
         try:
-            dob_dates = pd.to_datetime(self.df_mpf["DOB"], errors="coerce").dt.date
+            dob_dates = pd.to_datetime(dob_cleaned, errors="coerce").dt.date
             invalid_rows = self.df_mpf[
                 (dob_dates.isna()) | (dob_dates < min_date) | (dob_dates > max_date)
             ]
@@ -359,11 +360,11 @@ class MPFValidator:
 
         valid_values = set(valid_values_df.str.split(", ").explode())
 
-        # 转换列为字符串以便一致比较
-        self.df_mpf[column_name] = self.df_mpf[column_name].astype(str)
+        # 创建临时列进行比较，而不是修改原始列
+        column_as_str = self.df_mpf[column_name].astype(str)
 
         # 识别具有无效值的行
-        invalid_rows = self.df_mpf[~self.df_mpf[column_name].isin(valid_values)]
+        invalid_rows = self.df_mpf[~column_as_str.isin(valid_values)]
 
         if not invalid_rows.empty:
             self.invalid_rows.update(invalid_rows.index.tolist())
@@ -581,7 +582,7 @@ def display_validation_results(results: Dict):
 
 def validate_mpf_dataframe(
     df_mpf: pd.DataFrame, df_rules: pd.DataFrame = None, validation_date: str = None
-) -> Tuple[Dict, pd.DataFrame]:
+) -> Tuple[Dict, pd.DataFrame, pd.DataFrame]:
     """
     验证MPF DataFrame并返回验证结果和清理后的数据
 
@@ -591,9 +592,9 @@ def validate_mpf_dataframe(
         validation_date: 验证日期，格式为YYYY-MM-DD
 
     Returns:
-        Tuple[Dict, pd.DataFrame]: 验证结果和清理后的DataFrame
+        Tuple[Dict, pd.DataFrame, pd.DataFrame]: 验证结果、清理后的DataFrame和无效行DataFrame
     """
-    # 创建验证器
+    # 创建验证器 - 不需要在这里创建副本，因为MPFValidator构造函数已经会创建副本
     validator = MPFValidator(
         df_mpf=df_mpf, df_rules=df_rules, validation_date=validation_date
     )
