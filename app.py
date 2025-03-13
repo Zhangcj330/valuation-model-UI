@@ -100,6 +100,10 @@ def callback_stop():
     st.session_state.run_botton_clicked = False
 
 
+def callback_batch():
+    st.session_state.batch_run_button_clicked = True
+
+
 @st.cache_data(ttl=3600, show_spinner=False)  # 1小时后缓存失效
 def cached_download_model(models_url: str, model_name: str):
     handler = get_model_handler(st.session_state.get("storage_type", "SharePoint"))
@@ -561,6 +565,255 @@ def validate_all_mpf(settings_dict):
             return False
 
 
+def validate_batch_mpf(config, run_number):
+    """Validate model point files for a specific batch run configuration"""
+    # 确保 product_groups 是列表形式
+    if isinstance(config.get("product_groups"), str):
+        # 如果是逗号分隔的字符串，转换为列表
+        config["product_groups"] = [
+            p.strip() for p in config["product_groups"].split(",")
+        ]
+    elif not isinstance(config.get("product_groups"), list):
+        # 如果既不是字符串也不是列表，则确保它是可迭代的并转换为列表
+        try:
+            config["product_groups"] = list(config["product_groups"])
+        except TypeError:
+            st.error(
+                f"Invalid product_groups format in run #{run_number}. Expected a list or a comma-separated string."
+            )
+            return False
+        except ValueError:
+            st.error(
+                f"Invalid product_groups data in run #{run_number}. Could not convert to list."
+            )
+            return False
+    # Convert settings dictionary to ModelSettings object
+    settings = ModelSettings.from_dict(config)
+
+    settings.run_number = run_number
+    # Initialize batch validation state for this run if not already present
+    if run_number not in st.session_state.batch_validation_state:
+        st.session_state.batch_validation_state[run_number] = {}
+
+    with st.spinner(f"Running validation for configuration #{run_number}..."):
+        try:
+            # Download and process input files
+            model_points_list = cached_download_model_points(
+                settings.model_points_url, settings.product_groups
+            )
+
+            df_rules = pd.read_excel(
+                "MPF_Data_Validation_Check_Sample.xlsx", sheet_name="Rules_Input"
+            )
+            # Track if all products in this run are validated
+            all_validated = True
+
+            for product_idx, product in enumerate(settings.product_groups, 1):
+                # Initialize product validation state if not present
+                if product not in st.session_state.batch_validation_state[run_number]:
+                    st.session_state.batch_validation_state[run_number][product] = {
+                        "validated": False
+                    }
+                # Skip if already validated
+                if st.session_state.batch_validation_state[run_number][product][
+                    "validated"
+                ]:
+                    continue
+
+                current_mpf_data = model_points_list.get(product)
+                # Determine model type based on model name
+                model_type = "IP" if "IP" in settings.model_name else "LS"
+                validation_results, cleaned_df, invalid_rows = validate_mpf_dataframe(
+                    current_mpf_data, df_rules, str(settings.valuation_date), model_type
+                )
+
+                # Check validation results
+                if invalid_rows.empty:
+                    st.success(
+                        f"✅ All validation checks passed for {product} in run #{run_number}!"
+                    )
+                    st.session_state.batch_validation_state[run_number][product] = {
+                        "validated": True,
+                        "mpf_data": cleaned_df,
+                    }
+                else:
+                    all_validated = False
+
+                    # Use a container instead of an expander to avoid nesting issues
+                    st.markdown(
+                        f"### Run #{run_number} - {product} - Found {len(invalid_rows)} invalid rows"
+                    )
+
+                    # Display failed checks only
+                    for check_name, result in validation_results.items():
+                        if check_name != "column_checks":
+                            if result["status"] != "Success":
+                                st.error(f"⚠️ {result['message']}")
+
+                    # Display failed column-specific checks only
+                    if "column_checks" in validation_results:
+                        failed_cols = [
+                            col
+                            for col, res in validation_results["column_checks"].items()
+                            if res["status"] != "Success"
+                        ]
+                        if failed_cols:
+                            st.subheader("Failed column validations:")
+                            for col_name in failed_cols:
+                                col_result = validation_results["column_checks"][
+                                    col_name
+                                ]
+                                st.error(f"⚠️ {col_result['message']}")
+
+                    # Show invalid rows
+                    st.dataframe(invalid_rows)
+
+                    # Option to download invalid rows
+                    invalid_buffer = io.BytesIO()
+                    with pd.ExcelWriter(invalid_buffer, engine="openpyxl") as writer:
+                        invalid_rows.to_excel(
+                            writer, index=False, sheet_name="Invalid_Rows"
+                        )
+
+                    st.download_button(
+                        label="📥 Download Invalid Rows",
+                        data=invalid_buffer.getvalue(),
+                        file_name=f"invalid_mpf_rows_run{run_number}_{product}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"download_invalid_rows_run{run_number}_{product}",
+                    )
+
+                    # Create action buttons
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        if st.button(
+                            "Continue with cleaned data",
+                            key=f"filter_button_run{run_number}_{product}",
+                        ):
+                            st.warning(
+                                f"Proceeding with {len(cleaned_df)} valid rows. {len(invalid_rows)} rows will be excluded."
+                            )
+                            st.session_state.batch_validation_state[run_number][
+                                product
+                            ] = {
+                                "validated": True,
+                                "mpf_data": cleaned_df,
+                            }
+                            print(
+                                "\nFinal batch_validation_state:",
+                                st.session_state.batch_validation_state,
+                            )
+                            st.rerun()
+
+                    with col2:
+                        if st.button(
+                            "Continue with original data",
+                            key=f"continue_button_run{run_number}_{product}",
+                        ):
+                            st.warning(
+                                "Proceeding with original data including invalid rows."
+                            )
+                            st.session_state.batch_validation_state[run_number][
+                                product
+                            ] = {
+                                "validated": True,
+                                "mpf_data": current_mpf_data,
+                            }
+                            print(
+                                "\nFinal batch_validation_state:",
+                                st.session_state.batch_validation_state,
+                            )
+                            st.rerun()
+
+                    # Add a separator between products
+                    st.markdown("---")
+
+            # Return validation status
+            return all_validated
+
+        except Exception as e:
+            st.error(f"Error during MPF validation for run #{run_number}: {str(e)}")
+            logger.warning(
+                f"MPF Validation error in run #{run_number}: {str(e)}", exc_info=True
+            )
+            # Reset validation state for this run
+            st.session_state.batch_validation_state[run_number] = {}
+            return False
+
+
+def check_products_validated(config, run_number):
+    """Check if all products in a configuration are validated"""
+    if run_number not in st.session_state.batch_validation_state:
+        return False
+
+    for product in config["product_groups"]:
+        if product not in st.session_state.batch_validation_state[
+            run_number
+        ] or not st.session_state.batch_validation_state[run_number][product].get(
+            "validated", False
+        ):
+            return False
+    return True
+
+
+def display_batch_validation_results(configurations):
+    """Display validation results for all batch run configurations and handle user actions"""
+    st.subheader("Batch Validation Results")
+    # Track if all configurations are validated
+    all_configs_validated = True
+
+    # Process each configuration
+    for config in configurations:
+        run_number = config["run_number"]
+
+        # Create an expander for this configuration
+        with st.expander(f"Configuration #{run_number}", expanded=True):
+            # Display configuration details
+            st.write("Configuration details:")
+            config_df = pd.DataFrame([config])
+            st.dataframe(config_df)
+
+            # Check if all products in this configuration are validated
+            if check_products_validated(config, run_number):
+                st.success(
+                    f"✅ All validation checks passed for configuration #{run_number}!"
+                )
+                continue
+
+            # If not validated, run validation
+            try:
+                all_validated = validate_batch_mpf(config, run_number)
+                if not all_validated:
+                    all_configs_validated = False
+
+            except Exception as e:
+                st.error(f"Error validating configuration #{run_number}: {str(e)}")
+                logger.warning(
+                    f"Validation error in configuration #{run_number}: {str(e)}",
+                    exc_info=True,
+                )
+                all_configs_validated = False
+
+    # If all configurations are validated, show a button to proceed with the batch run
+    if all_configs_validated:
+        st.success("✅ All configurations have passed validation!")
+        if st.button("Proceed with Batch Run"):
+            # Set a flag to indicate we're moving to the processing phase
+            st.session_state.batch_validation_state["processing"] = True
+            st.rerun()
+    else:
+        st.warning(
+            "⚠️ Some configurations have validation issues. Please resolve them before proceeding."
+        )
+
+        # Add a button to cancel the batch run
+        if st.button("Cancel Batch Run"):
+            st.session_state.batch_validation_state = {}
+            st.session_state.batch_run_button_clicked = False
+            st.rerun()
+
+
 def process_single_model_point_LS(
     product,
     product_idx,
@@ -928,8 +1181,53 @@ def process_batch_run(configurations):
             # Convert product_groups to a list if it's a string
             config["product_groups"] = convert_to_list(config.get("product_groups", []))
             config["projection_period"] = int(config["projection_period"])
-            # Validate settings
+
+            # Get the run number for this configuration
+            run_number = config["run_number"]
+
+            # 检查该配置的所有产品是否已验证
+            all_products_validated = True
+            if run_number in st.session_state.batch_validation_state:
+                for product in config["product_groups"]:
+                    if product not in st.session_state.batch_validation_state[
+                        run_number
+                    ] or not st.session_state.batch_validation_state[run_number][
+                        product
+                    ].get(
+                        "validated", False
+                    ):
+                        all_products_validated = False
+                        st.error(
+                            f"Product {product} in run #{run_number} has not been validated. Cannot proceed."
+                        )
+                        break
+            else:
+                all_products_validated = False
+                st.error(f"Run #{run_number} has not been validated. Cannot proceed.")
+
+            # 只有当所有产品都已验证时才继续
+            if not all_products_validated:
+                st.warning(f"Skipping run #{run_number} due to validation issues.")
+                continue
+
+            # Use the validated MPF data from the batch validation state
+            for product in config["product_groups"]:
+                if product in st.session_state.batch_validation_state[run_number]:
+                    product_state = st.session_state.batch_validation_state[run_number][
+                        product
+                    ]
+                    if "mpf_data" in product_state:
+                        # Store the validated MPF data in the validation_state for process_model_run to use
+                        if "validation_state" not in st.session_state:
+                            st.session_state.validation_state = {}
+                        st.session_state.validation_state[product] = {
+                            "validated": True,
+                            "mpf_data": product_state["mpf_data"],
+                        }
+
+            # Run the model with the validated data
             process_model_run(config)
+
             if "results" not in st.session_state:
                 st.info("Run model to display the results")
             else:
@@ -976,6 +1274,8 @@ def main():
         st.session_state.validation_state = {}
     if "run_botton_clicked" not in st.session_state:
         st.session_state.run_botton_clicked = False
+    if "batch_run_button_clicked" not in st.session_state:
+        st.session_state.batch_run_button_clicked = False
 
     with st.sidebar:
         user = st.session_state.user
@@ -1031,7 +1331,6 @@ def main():
                 )
                 for product in settings.get("product_groups", [])
             )
-
             # If not all validated, run validation
             if not all_validated:
                 all_validated = validate_all_mpf(settings)
@@ -1054,15 +1353,75 @@ def main():
             try:
                 # Read the Excel file
                 df = pd.read_excel(uploaded_file)
+
+                # Ensure each configuration has a run_number
+                if "run_number" not in df.columns:
+                    df["run_number"] = range(1, len(df) + 1)
+
                 configurations = df.to_dict(orient="records")
                 st.write("Configuration loaded successfully!")
                 st.dataframe(df)  # Display the configurations for confirmation
 
-                if st.button("Run Batch"):
-                    st.subheader("Model Results")
-                    process_batch_run(configurations)
-                    st.write("Preview of the input configurations:")
+                col1, col2, col3 = st.columns([1, 1, 2])
+                with col1:
+                    batch_submitted = st.button("Run Batch", on_click=callback_batch)
 
+                if batch_submitted:
+                    # Initialize batch validation state if not already present
+                    st.session_state.batch_validation_state = {}
+                    print("restart batch validation state")
+
+                # Handle batch form submission
+                if batch_submitted or st.session_state.batch_run_button_clicked:
+                    print(st.session_state.batch_validation_state)
+                    # Check if all configurations are already validated
+                    all_configs_validated = True
+                    for config in configurations:
+                        config["product_groups"] = convert_to_list(
+                            config.get("product_groups", [])
+                        )
+                        run_number = config["run_number"]
+                        if run_number not in st.session_state.batch_validation_state:
+                            all_configs_validated = False
+                            print(1)
+                            break
+
+                        for product in config["product_groups"]:
+                            if product not in st.session_state.batch_validation_state[
+                                run_number
+                            ] or not st.session_state.batch_validation_state[
+                                run_number
+                            ][
+                                product
+                            ].get(
+                                "validated", False
+                            ):
+                                print(
+                                    st.session_state.batch_validation_state[run_number][
+                                        product
+                                    ].get("validated")
+                                )
+                                all_configs_validated = False
+                                print(2)
+                                break
+
+                    # If not all validated, run validation
+                    if not all_configs_validated:
+                        display_batch_validation_results(configurations)
+                    print("all_configs_validated  : ", all_configs_validated)
+                    # If all validated, run the batch processing
+                    if all_configs_validated:
+                        st.subheader("Model Results")
+                        process_batch_run(configurations)
+                        if "results" not in st.session_state:
+                            st.info("Run batch to display the results")
+                        else:
+                            for config in configurations:
+                                run_number = config["run_number"]
+                                st.write(f"Results for Run #{run_number}:")
+                                display_results(st.session_state["results"])
+
+                    print(st.session_state.batch_validation_state)
             except Exception as e:
                 st.error(f"Error loading configuration file: {str(e)}")
 
