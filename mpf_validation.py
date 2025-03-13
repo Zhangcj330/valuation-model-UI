@@ -20,6 +20,7 @@ class MPFValidator:
         df_mpf: pd.DataFrame,
         df_rules: pd.DataFrame = None,
         validation_date: str = None,
+        product: str = "IP",
     ):
         """
         初始化MPF验证器
@@ -28,11 +29,12 @@ class MPFValidator:
             df_mpf: MPF数据DataFrame
             df_rules: 规则数据DataFrame，如果为None则需要在调用验证方法前设置
             validation_date: 验证日期，格式为YYYY-MM-DD，默认为今天
+            product: 产品类型，默认为"IP"
         """
         # 创建输入DataFrame的深拷贝，避免修改原始数据
         self.df_mpf = df_mpf.copy(deep=True)
         self.df_rules = df_rules.copy(deep=True) if df_rules is not None else None
-
+        self.product = product
         # 设置验证日期，默认为今天
         if validation_date:
             try:
@@ -205,19 +207,30 @@ class MPFValidator:
     def numeric_amt_check(self) -> Dict:
         """检查所有数值金额列"""
         logger.info("Running numeric amount check...")
-
-        columns_to_check = [
-            "sum_assured_dth",
-            "sum_assured_tpd",
-            "sum_assured_trm",
-            "Annual Prem",
-            "R_sum_assured_dth",
-            "R_sum_assured_tpd",
-            "R_sum_assured_trm",
-            "R_Prem",
-            "Monthly Benefit",
-            "R_Monthly_Ben",
-        ]
+        if self.product == "IP":
+            columns_to_check = [
+                "sum_assured_dth",
+                "sum_assured_tpd",
+                "sum_assured_trm",
+                "Annual Prem",
+                "R_sum_assured_dth",
+                "R_sum_assured_tpd",
+                "R_sum_assured_trm",
+                "R_Prem",
+                "Monthly Benefit",
+                "R_Monthly_Ben",
+            ]
+        else:
+            columns_to_check = [
+                "sum_assured_dth",
+                "sum_assured_tpd",
+                "sum_assured_trm",
+                "Annual Prem",
+                "R_sum_assured_dth",
+                "R_sum_assured_tpd",
+                "R_sum_assured_trm",
+                "R_Prem",
+            ]
 
         # 确保所有值都是数值且非负
         numeric_check = (
@@ -229,7 +242,10 @@ class MPFValidator:
         invalid_rows = self.df_mpf[(numeric_check < 0).any(axis=1)]
 
         # 确保sum_assured_dth, Annual Prem, 和 Monthly Benefit大于零
-        mandatory_columns = ["sum_assured_dth", "Annual Prem", "Monthly Benefit"]
+        if self.product == "IP":
+            mandatory_columns = ["sum_assured_dth", "Annual Prem", "Monthly Benefit"]
+        else:
+            mandatory_columns = ["sum_assured_dth", "Annual Prem"]
         mandatory_check = (
             self.df_mpf[mandatory_columns]
             .apply(lambda x: pd.to_numeric(x, errors="coerce"))
@@ -581,7 +597,10 @@ def display_validation_results(results: Dict):
 
 
 def validate_mpf_dataframe(
-    df_mpf: pd.DataFrame, df_rules: pd.DataFrame = None, validation_date: str = None
+    df_mpf: pd.DataFrame,
+    df_rules: pd.DataFrame = None,
+    validation_date: str = None,
+    product: str = "IP",
 ) -> Tuple[Dict, pd.DataFrame, pd.DataFrame]:
     """
     验证MPF DataFrame并返回验证结果和清理后的数据
@@ -596,7 +615,10 @@ def validate_mpf_dataframe(
     """
     # 创建验证器 - 不需要在这里创建副本，因为MPFValidator构造函数已经会创建副本
     validator = MPFValidator(
-        df_mpf=df_mpf, df_rules=df_rules, validation_date=validation_date
+        df_mpf=df_mpf,
+        df_rules=df_rules,
+        validation_date=validation_date,
+        product=product,
     )
 
     # 运行所有检查

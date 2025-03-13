@@ -118,6 +118,12 @@ def cached_download_model_points(model_points_url: str, product_groups: list):
     return handler.download_model_points(model_points_url, product_groups)
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_download_assumptions_LS(assumption_url: str):
+    handler = get_model_handler(st.session_state.get("storage_type", "SharePoint"))
+    return handler.download_assumptions_LS(assumption_url)
+
+
 def display_settings_management(saved_settings):
     """Display the settings management section"""
     st.info("You can save your current settings or load previously saved settings.")
@@ -408,14 +414,14 @@ def clear_progress_indicators(progress_bar, status_text, time_text):
     time_text.empty()
 
 
-def validate_mpf(df_mpf, validation_date):
+def validate_mpf(df_mpf, validation_date, product):
     # Validate MPF data after downloaded
     try:
         df_rules = pd.read_excel(
             "MPF_Data_Validation_Check_Sample.xlsx", sheet_name="Rules_Input"
         )
         validation_results, cleaned_df, invalid_rows = validate_mpf_dataframe(
-            df_mpf, df_rules, str(validation_date)
+            df_mpf, df_rules, str(validation_date), product
         )
         # Display overall status
         if invalid_rows.empty:
@@ -703,7 +709,7 @@ def process_model_run(settings_dict):
                 # Validate MPF data after downloaded
                 for product_idx, product in enumerate(settings.product_groups, 1):
                     df_mpf, continue_button = validate_mpf(
-                        model_points_list[product], settings.valuation_date
+                        model_points_list[product], settings.valuation_date, "IP"
                     )
                     if df_mpf is None or not continue_button:
                         # Clear progress indicators and exit
@@ -735,9 +741,9 @@ def process_model_run(settings_dict):
                         results[product] = model_result
 
             else:
-                assumptions = handler.download_assumptions_LS(settings.assumption_url)
+                assumptions = cached_download_assumptions_LS(settings.assumption_url)
                 print("downloading model points LS")
-                model_points_list = handler.download_model_points(
+                model_points_list = cached_download_model_points(
                     settings.model_points_url, settings.product_groups
                 )
                 # Initialize tracking variables
@@ -747,28 +753,36 @@ def process_model_run(settings_dict):
                 results = {}
 
                 for product_idx, product in enumerate(settings.product_groups, 1):
-                    model_result, current_step = process_single_model_point_LS(
-                        product=product,
-                        product_idx=product_idx,
-                        settings=settings_dict,  # Pass the original dict for logging
-                        model_points_df=model_points_list[product],
-                        assumptions=assumptions,
-                        total_products=len(settings.product_groups),
-                        progress_bar=progress_bar,
-                        current_step=current_step,
-                        total_steps=total_steps,
+                    df_mpf, continue_button = validate_mpf(
+                        model_points_list[product], settings.valuation_date, "LS"
                     )
+                    if df_mpf is None or not continue_button:
+                        # Clear progress indicators and exit
+                        clear_progress_indicators(progress_bar, status_text, time_text)
+                        return  # Exit the function early
+                    else:
+                        model_result, current_step = process_single_model_point_LS(
+                            product=product,
+                            product_idx=product_idx,
+                            settings=settings_dict,  # Pass the original dict for logging
+                            model_points_df=df_mpf,
+                            assumptions=assumptions,
+                            total_products=len(settings.product_groups),
+                            progress_bar=progress_bar,
+                            current_step=current_step,
+                            total_steps=total_steps,
+                        )
 
-                    current_step += 1
-                    progress_bar.progress(current_step / total_steps)
+                        current_step += 1
+                        progress_bar.progress(current_step / total_steps)
 
-                    output_buffer = format_results_LS(model_result)
-                    output_filename = f"results_{product}_{output_timestamp}.xlsx"
-                    output_path = (
-                        f"{settings.results_url.rstrip('/')}/{output_filename}"
-                    )
-                    handler.save_results(output_buffer.getvalue(), output_path)
-                    results[product] = model_result
+                        output_buffer = format_results_LS(model_result)
+                        output_filename = f"results_{product}_{output_timestamp}.xlsx"
+                        output_path = (
+                            f"{settings.results_url.rstrip('/')}/{output_filename}"
+                        )
+                        handler.save_results(output_buffer.getvalue(), output_path)
+                        results[product] = model_result
 
             # Calculate total time
             end_time = datetime.datetime.now()
