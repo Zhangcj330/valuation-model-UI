@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import streamlit as st
 import datetime
-from typing import List, Optional
+from typing import List
 
 SETTINGS_FILE = "saved_settings.json"
 
@@ -17,7 +17,8 @@ class ModelSettings:
         valuation_date: datetime.date,
         projection_period: int,
         product_groups: List[str],
-        model_name: Optional[str] = None,
+        model_name: str,
+        run_number: int = 1,
     ):
         self.assumption_url = assumption_url
         self.models_url = models_url
@@ -27,6 +28,7 @@ class ModelSettings:
         self.projection_period = projection_period
         self.product_groups = product_groups
         self.model_name = model_name
+        self.run_number = run_number
 
     def validate(self, validate_required=False):
         """Validate the settings to ensure all required fields are set correctly."""

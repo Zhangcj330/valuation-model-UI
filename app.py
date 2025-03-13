@@ -126,7 +126,7 @@ def cached_download_assumptions_LS(assumption_url: str):
 
 def display_settings_management(saved_settings):
     """Display the settings management section"""
-    st.info("You can save your current settings or load previously saved settings.")
+    st.info("You can save your current settings.")
 
     storage_type = st.session_state.get("storage_type", "SharePoint")
     settings = {}
@@ -189,6 +189,7 @@ def display_settings_management(saved_settings):
         save_button = st.button("Save Settings")
 
     if load_button:
+        # Load the saved configuration
         st.success("Settings loaded successfully!")
         st.rerun()
     if save_button:
@@ -414,90 +415,150 @@ def clear_progress_indicators(progress_bar, status_text, time_text):
     time_text.empty()
 
 
-def validate_mpf(df_mpf, validation_date, product):
-    # Validate MPF data after downloaded
-    try:
-        df_rules = pd.read_excel(
-            "MPF_Data_Validation_Check_Sample.xlsx", sheet_name="Rules_Input"
-        )
-        validation_results, cleaned_df, invalid_rows = validate_mpf_dataframe(
-            df_mpf, df_rules, str(validation_date), product
-        )
-        # Display overall status
-        if invalid_rows.empty:
-            st.success("✅ All validation checks passed successfully!")
-            return df_mpf, True
-        else:
-            # Display failed checks only
-            for check_name, result in validation_results.items():
-                if check_name != "column_checks":
-                    if result["status"] != "Success":
-                        st.error(f"⚠️ {result['message']}")
+def validate_all_mpf(settings_dict):
+    """Process the model run and display results"""
+    # Convert settings dictionary to ModelSettings object
+    settings = ModelSettings.from_dict(settings_dict)
 
-            # Display failed column-specific checks only
-            if "column_checks" in validation_results:
-                failed_cols = [
-                    col
-                    for col, res in validation_results["column_checks"].items()
-                    if res["status"] != "Success"
-                ]
-                if failed_cols:
-                    st.subheader("Failed column validations:")
-                    for col_name in failed_cols:
-                        col_result = validation_results["column_checks"][col_name]
-                        st.error(f"⚠️ {col_result['message']}")
-            # If there are invalid rows, show them and ask user what to do
-            with st.expander(
-                f"Found {len(invalid_rows)} invalid rows in the MPF data.",
-                expanded=True,
-            ):
-                st.dataframe(invalid_rows)
+    # Initialize validation state if not already present
+    if "validation_state" not in st.session_state:
+        st.session_state.validation_state = {}
 
-                # Option to download invalid rows
-                invalid_buffer = io.BytesIO()
-                with pd.ExcelWriter(invalid_buffer, engine="openpyxl") as writer:
-                    invalid_rows.to_excel(
-                        writer, index=False, sheet_name="Invalid_Rows"
-                    )
+    with st.spinner("Running mpf validation..."):
+        try:
+            # Download and process input files
+            print("downloading ..........")
 
-                st.download_button(
-                    label="📥 Download Invalid Rows",
-                    data=invalid_buffer.getvalue(),
-                    file_name="invalid_mpf_rows.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            model_points_list = cached_download_model_points(
+                settings.model_points_url, settings.product_groups
+            )
+            print("Finished downloading")
+            df_rules = pd.read_excel(
+                "MPF_Data_Validation_Check_Sample.xlsx", sheet_name="Rules_Input"
+            )
+
+            # Track if all products are validated
+            all_validated = True
+
+            for product_idx, product in enumerate(settings.product_groups, 1):
+                # Initialize product validation state if not present
+                if product not in st.session_state.validation_state:
+                    st.session_state.validation_state[product] = {"validated": False}
+
+                # Skip if already validated
+                if st.session_state.validation_state[product]["validated"]:
+                    continue
+
+                current_mpf_data = model_points_list.get(product)
+
+                # 根据模型类型选择验证方式
+                model_type = "IP" if "IP" in settings.model_name else "LS"
+
+                validation_results, cleaned_df, invalid_rows = validate_mpf_dataframe(
+                    current_mpf_data, df_rules, str(settings.valuation_date), model_type
                 )
 
-            # Create three buttons for user action
-            col1, col2, col3 = st.columns(3)
+                # 显示整体状态
+                if invalid_rows.empty:
+                    st.success(f"✅ All validation checks passed for {product}!")
+                    st.session_state.validation_state[product] = {
+                        "validated": True,
+                        "mpf_data": cleaned_df,
+                    }
+                else:
+                    all_validated = False
+                    # Display failed checks only
+                    for check_name, result in validation_results.items():
+                        if check_name != "column_checks":
+                            if result["status"] != "Success":
+                                st.error(f"⚠️ {result['message']}")
 
-            with col1:
-                stop_button = st.button("Stop and fix the data", on_click=callback_stop)
+                    # Display failed column-specific checks only
+                    if "column_checks" in validation_results:
+                        failed_cols = [
+                            col
+                            for col, res in validation_results["column_checks"].items()
+                            if res["status"] != "Success"
+                        ]
+                        if failed_cols:
+                            st.subheader(f"Failed column validations for {product}:")
+                            for col_name in failed_cols:
+                                col_result = validation_results["column_checks"][
+                                    col_name
+                                ]
+                                st.error(f"⚠️ {col_result['message']}")
 
-            with col2:
-                filter_button = st.button("Continue with cleaned data")
+                    # If there are invalid rows, show them and ask user what to do
+                    with st.expander(
+                        f"Found {len(invalid_rows)} invalid rows in {product} MPF data.",
+                        expanded=True,
+                    ):
+                        st.dataframe(invalid_rows)
 
-            with col3:
-                continue_button = st.button("Continue with original data")
+                        # Option to download invalid rows
+                        invalid_buffer = io.BytesIO()
+                        with pd.ExcelWriter(
+                            invalid_buffer, engine="openpyxl"
+                        ) as writer:
+                            invalid_rows.to_excel(
+                                writer, index=False, sheet_name="Invalid_Rows"
+                            )
 
-            if stop_button:
-                return df_mpf, False
-            if filter_button:
-                st.warning(
-                    f"Proceeding with {len(cleaned_df)} valid rows. {len(invalid_rows)} rows will be excluded."
-                )
-                return cleaned_df, True
+                        st.download_button(
+                            label="📥 Download Invalid Rows",
+                            data=invalid_buffer.getvalue(),
+                            file_name=f"invalid_mpf_rows_{product}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"download_invalid_rows_{product}",
+                        )
 
-            if continue_button:
-                st.warning("Proceeding with original data including invalid rows.")
-                return df_mpf, True
+                    # Create three buttons for user action
+                    col1, col2, col3 = st.columns(3)
 
-            return df_mpf, False  # Default return if no button is clicked
+                    with col1:
+                        if st.button(
+                            "Stop and fix the data", key=f"stop_button_{product}"
+                        ):
+                            st.session_state.validation_state = {}
+                            st.session_state.run_botton_clicked = False
+                            st.rerun()
 
-    except Exception as e:
-        st.error(f"Error during MPF validation: {str(e)}")
-        # 使用 warning 而不是 error 方法
-        logger.warning(f"MPF Validation error: {str(e)}", exc_info=True)
-        return df_mpf, False  # Ensure a tuple is always returned
+                    with col2:
+                        if st.button(
+                            "Continue with cleaned data",
+                            key=f"filter_button_{product}",
+                        ):
+                            st.warning(
+                                f"Proceeding with {len(cleaned_df)} valid rows. {len(invalid_rows)} rows will be excluded."
+                            )
+                            st.session_state.validation_state[product] = {
+                                "validated": True,
+                                "mpf_data": cleaned_df,
+                            }
+                            st.rerun()
+
+                    with col3:
+                        if st.button(
+                            "Continue with original data",
+                            key=f"continue_button_{product}",
+                        ):
+                            st.warning(
+                                "Proceeding with original data including invalid rows."
+                            )
+                            st.session_state.validation_state[product] = {
+                                "validated": True,
+                                "mpf_data": current_mpf_data,
+                            }
+                            st.rerun()
+
+            # Return validation status
+            return all_validated
+
+        except Exception as e:
+            st.error(f"Error during MPF validation: {str(e)}")
+            logger.warning(f"MPF Validation error: {str(e)}", exc_info=True)
+            st.session_state.validation_state = {}
+            return False
 
 
 def process_single_model_point_LS(
@@ -706,39 +767,45 @@ def process_model_run(settings_dict):
                 current_step = 0
                 progress_bar.progress(current_step / total_steps)
 
-                # Validate MPF data after downloaded
                 for product_idx, product in enumerate(settings.product_groups, 1):
-                    df_mpf, continue_button = validate_mpf(
-                        model_points_list[product], settings.valuation_date, "IP"
-                    )
-                    if df_mpf is None or not continue_button:
-                        # Clear progress indicators and exit
-                        clear_progress_indicators(progress_bar, status_text, time_text)
-                        return  # Exit the function early
+                    # Process each product
+                    # Make sure we're using the validated MPF data
+                    if (
+                        product in st.session_state.validation_state
+                        and "mpf_data" in st.session_state.validation_state[product]
+                    ):
+                        model_points_df = st.session_state.validation_state[product][
+                            "mpf_data"
+                        ]
                     else:
-                        # Process each product
-                        model_result, current_step = process_single_model_point_IP(
-                            product=product,
-                            product_idx=product_idx,
-                            settings=settings_dict,
-                            model_points_df=df_mpf,
-                            assumptions=assumptions,
-                            total_products=len(settings.product_groups),
-                            progress_bar=progress_bar,
-                            current_step=current_step,
-                            total_steps=total_steps,
+                        # Fallback to original data if validation state is missing
+                        model_points_df = model_points_list.get(product)
+                        st.warning(
+                            f"Using unvalidated data for {product}. This may cause issues."
                         )
 
-                        current_step += 1
-                        progress_bar.progress(current_step / total_steps)
+                    model_result, current_step = process_single_model_point_IP(
+                        product=product,
+                        product_idx=product_idx,
+                        settings=settings_dict,
+                        model_points_df=model_points_df,
+                        assumptions=assumptions,
+                        total_products=len(settings.product_groups),
+                        progress_bar=progress_bar,
+                        current_step=current_step,
+                        total_steps=total_steps,
+                    )
 
-                        output_buffer = format_results_IP(model_result)
-                        output_filename = f"results_{product}_{output_timestamp}.xlsx"
-                        output_path = (
-                            f"{settings.results_url.rstrip('/')}/{output_filename}"
-                        )
-                        handler.save_results(output_buffer.getvalue(), output_path)
-                        results[product] = model_result
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+
+                    output_buffer = format_results_IP(model_result)
+                    output_filename = f"results_{product}_{output_timestamp}.xlsx"
+                    output_path = (
+                        f"{settings.results_url.rstrip('/')}/{output_filename}"
+                    )
+                    handler.save_results(output_buffer.getvalue(), output_path)
+                    results[product] = model_result
 
             else:
                 assumptions = cached_download_assumptions_LS(settings.assumption_url)
@@ -753,36 +820,43 @@ def process_model_run(settings_dict):
                 results = {}
 
                 for product_idx, product in enumerate(settings.product_groups, 1):
-                    df_mpf, continue_button = validate_mpf(
-                        model_points_list[product], settings.valuation_date, "LS"
-                    )
-                    if df_mpf is None or not continue_button:
-                        # Clear progress indicators and exit
-                        clear_progress_indicators(progress_bar, status_text, time_text)
-                        return  # Exit the function early
+                    # 确保使用已验证的 MPF 数据
+                    if (
+                        product in st.session_state.validation_state
+                        and "mpf_data" in st.session_state.validation_state[product]
+                    ):
+                        model_points_df = st.session_state.validation_state[product][
+                            "mpf_data"
+                        ]
                     else:
-                        model_result, current_step = process_single_model_point_LS(
-                            product=product,
-                            product_idx=product_idx,
-                            settings=settings_dict,  # Pass the original dict for logging
-                            model_points_df=df_mpf,
-                            assumptions=assumptions,
-                            total_products=len(settings.product_groups),
-                            progress_bar=progress_bar,
-                            current_step=current_step,
-                            total_steps=total_steps,
+                        # 如果验证状态缺失，则使用原始数据
+                        model_points_df = model_points_list.get(product)
+                        st.warning(
+                            f"Using unvalidated data for {product}. This may cause issues."
                         )
 
-                        current_step += 1
-                        progress_bar.progress(current_step / total_steps)
+                    model_result, current_step = process_single_model_point_LS(
+                        product=product,
+                        product_idx=product_idx,
+                        settings=settings_dict,  # Pass the original dict for logging
+                        model_points_df=model_points_df,
+                        assumptions=assumptions,
+                        total_products=len(settings.product_groups),
+                        progress_bar=progress_bar,
+                        current_step=current_step,
+                        total_steps=total_steps,
+                    )
 
-                        output_buffer = format_results_LS(model_result)
-                        output_filename = f"results_{product}_{output_timestamp}.xlsx"
-                        output_path = (
-                            f"{settings.results_url.rstrip('/')}/{output_filename}"
-                        )
-                        handler.save_results(output_buffer.getvalue(), output_path)
-                        results[product] = model_result
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+
+                    output_buffer = format_results_LS(model_result)
+                    output_filename = f"results_{product}_{output_timestamp}.xlsx"
+                    output_path = (
+                        f"{settings.results_url.rstrip('/')}/{output_filename}"
+                    )
+                    handler.save_results(output_buffer.getvalue(), output_path)
+                    results[product] = model_result
 
             # Calculate total time
             end_time = datetime.datetime.now()
@@ -897,6 +971,11 @@ def main():
     if not authenticate_user():
         display_login()
         return
+    # Initialize session state variables
+    if "validation_state" not in st.session_state:
+        st.session_state.validation_state = {}
+    if "run_botton_clicked" not in st.session_state:
+        st.session_state.run_botton_clicked = False
 
     with st.sidebar:
         user = st.session_state.user
@@ -941,12 +1020,30 @@ def main():
 
         # Handle form submission
         if submitted or st.session_state.run_botton_clicked:
-            process_model_run(settings)
-            st.subheader("Model Results")
-            if "results" not in st.session_state:
-                st.info("Run model to display the results")
-            else:
-                display_results(st.session_state["results"])
+            # Initialize validation state if needed
+            if "validation_state" not in st.session_state:
+                st.session_state.validation_state = {}
+
+            # Check if all products are already validated
+            all_validated = all(
+                st.session_state.validation_state.get(product, {}).get(
+                    "validated", False
+                )
+                for product in settings.get("product_groups", [])
+            )
+
+            # If not all validated, run validation
+            if not all_validated:
+                all_validated = validate_all_mpf(settings)
+
+            # If all validated, run the model
+            if all_validated:
+                process_model_run(settings)
+                st.subheader("Model Results")
+                if "results" not in st.session_state:
+                    st.info("Run model to display the results")
+                else:
+                    display_results(st.session_state["results"])
 
     # Batch Run tab
     with batchrun:
