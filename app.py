@@ -800,7 +800,6 @@ def display_batch_validation_results(configurations):
         st.success("✅ All configurations have passed validation!")
         if st.button("Proceed with Batch Run"):
             # Set a flag to indicate we're moving to the processing phase
-            st.session_state.batch_validation_state["processing"] = True
             st.rerun()
     else:
         st.warning(
@@ -926,25 +925,6 @@ def format_results_IP(model_results):
     return output_buffer
 
 
-def deduplicate_columns(df):
-    # Create a dictionary to store the count of each column name
-    counts = {}
-    # List to store new column names
-    new_columns = []
-    for col in df.columns:
-        if col in counts:
-            # If the column name is already in the dictionary, increment its count
-            counts[col] += 1
-        else:
-            # If the column name is not in the dictionary, initialize its count
-            counts[col] = 1
-        # Append the column name with its count to make it unique
-        new_columns.append(f"{col}_{counts[col]}")
-    # Assign the new unique column names to the DataFrame
-    df.columns = new_columns
-    return df
-
-
 def display_results(results):
     """Display the results of the model run"""
 
@@ -972,9 +952,6 @@ def display_results(results):
             else:
                 st.success("✅ Number of results matches number of model points")
 
-            product_results["present_value"] = deduplicate_columns(
-                product_results["present_value"]
-            )
             st.write("Present Value:")
             st.write(product_results["present_value"])
             st.write("RPG Aggregation:")
@@ -1171,6 +1148,7 @@ def convert_to_list(value):
 def process_batch_run(configurations):
     """Process each configuration in the batch run"""
     rpg_aggregation = []  # List to store all results for stacking
+    summary_results = []
 
     for config in configurations:
         st.write(f"Running configuration: {config['run_number']}")
@@ -1242,15 +1220,41 @@ def process_batch_run(configurations):
                         [config["run_number"]] * len(result["rpg_aggregation"]),
                     )
                     rpg_aggregation.append(result["rpg_aggregation"])
+                # add summary to summary_results
+                sum_present_values = []
+                for product, result in st.session_state["results"].items():
+                    sum_present_values.append(result["present_value"])
+                    print(result["present_value"].columns)
+                print("=================================")
+                print(sum_present_values)
+                combined_present_value = pd.concat(
+                    sum_present_values, ignore_index=True
+                )
+                sums = combined_present_value.select_dtypes(
+                    include=["float64", "int64"]
+                ).sum()
+                formatted_sums = sums.apply(lambda x: f"{x:,.2f}")
+
+            # 创建与 rpg_aggregation 类似格式的 DataFrame
+            summary_df = pd.DataFrame(
+                {
+                    "run_number": config["run_number"],
+                    "Variable": formatted_sums.index,
+                    "Value": formatted_sums.values,
+                }
+            )
+            print("=================================")
+            print(summary_df)
+            summary_results.append(summary_df)
 
             st.success(f"Run {config['run_number']} completed successfully!")
         except Exception as e:
             st.error(f"Error in run {config['run_number']}: {str(e)}")
 
     # Stack all RPG aggregation results and export to Excel
-    if rpg_aggregation:
+    if rpg_aggregation and summary_results:
         stacked_results = pd.concat(rpg_aggregation, ignore_index=True)
-
+        all_summary_results = pd.concat(summary_results, ignore_index=True)
         # Rename columns to ensure consistent naming
         stacked_results = stacked_results.rename(
             columns={
@@ -1265,6 +1269,34 @@ def process_batch_run(configurations):
             .str.replace(")", "")  # 移除右括号
             .astype(float)
         )  # 转换为浮点数
+
+        # stacked_results RPG Level group by Variable
+        stacked_results_rpg = (
+            stacked_results.groupby(["run_number", "Variable"])["Value"]
+            .sum()
+            .reset_index()
+        )
+
+        all_summary_results["Value"] = all_summary_results["Value"].apply(
+            lambda x: float(str(x).replace(",", "").replace("(", "-").replace(")", ""))
+            if isinstance(x, str)
+            else float(x)
+        )
+        # 合并 stacked_results 和 all_summary_results
+        comparison_df = pd.merge(
+            stacked_results_rpg,
+            all_summary_results,
+            left_on=["run_number", "Variable"],
+            right_on=["run_number", "Variable"],
+            how="outer",
+            suffixes=("_RPG", "_PV"),
+        )
+        comparison_df["Difference"] = (
+            comparison_df["Value_RPG"] - comparison_df["Value_PV"]
+        )
+        print("=================================")
+        print(comparison_df)
+
         summary_results = (
             stacked_results.groupby(["RPG", "Variable"])["Value"].sum().reset_index()
         )
@@ -1282,6 +1314,7 @@ def process_batch_run(configurations):
             stacked_results.to_excel(
                 writer, sheet_name="RPG Aggregation Each Run", index=False
             )
+            comparison_df.to_excel(writer, sheet_name="Comparison", index=False)
 
         output_filename = f"batch_results_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
         # Get the parent directory by splitting the path and taking all but the last component
