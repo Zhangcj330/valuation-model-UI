@@ -1233,6 +1233,8 @@ def process_batch_run(configurations):
             else:
                 display_results(st.session_state["results"])
                 # Collect results for stacking
+
+                # add results to rpg_aggregation
                 for product, result in st.session_state["results"].items():
                     result["rpg_aggregation"].insert(
                         0,
@@ -1248,9 +1250,39 @@ def process_batch_run(configurations):
     # Stack all RPG aggregation results and export to Excel
     if rpg_aggregation:
         stacked_results = pd.concat(rpg_aggregation, ignore_index=True)
+
+        # Rename columns to ensure consistent naming
+        stacked_results = stacked_results.rename(
+            columns={
+                "variable": "Variable",
+                "value": "Value",
+            }
+        )
+        stacked_results["Value"] = (
+            stacked_results["Value"]
+            .str.replace(",", "")  # 移除千分位逗号
+            .str.replace("(", "-")  # 将左括号替换为负号
+            .str.replace(")", "")  # 移除右括号
+            .astype(float)
+        )  # 转换为浮点数
+        summary_results = (
+            stacked_results.groupby(["RPG", "Variable"])["Value"].sum().reset_index()
+        )
+
+        # 格式化结果：负数用括号，正数保持原样，都带千分位
+        summary_results["Value"] = summary_results["Value"].apply(
+            lambda x: f"({abs(x):,.2f})" if x < 0 else f"{x:,.2f}"
+        )
+        # 将数值格式化为带千分位的字符串
         output_buffer = io.BytesIO()
         with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
-            stacked_results.to_excel(writer, sheet_name="RPG Aggregation", index=False)
+            summary_results.to_excel(
+                writer, sheet_name="RPG Aggregation Summary", index=False
+            )
+            stacked_results.to_excel(
+                writer, sheet_name="RPG Aggregation Each Run", index=False
+            )
+
         output_filename = f"batch_results_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
         # Get the parent directory by splitting the path and taking all but the last component
         base_path = "/".join(
