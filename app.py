@@ -1288,7 +1288,7 @@ def process_batch_run(configurations):
             all_summary_results,
             left_on=["run_number", "Variable"],
             right_on=["run_number", "Variable"],
-            how="outer",
+            how="inner",
             suffixes=("_RPG", "_PV"),
         )
         comparison_df["Difference"] = (
