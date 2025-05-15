@@ -47,7 +47,7 @@ pip install -r requirements.txt
 
 ### 3. Configure environment variables
 
-Create a `.env.local` file in the root directory with the following credentials:
+Create a `.env` file in the root directory with the following credentials:
 
 ```
 # Microsoft Authentication
