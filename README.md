@@ -1,4 +1,4 @@
-# Enterprise Valuation Model Server
+# Enterprise Valuation Model
 
 [![CI Pipeline](https://github.com/yourusername/enterprise-valuation-model/actions/workflows/ci.yml/badge.svg)]
 [![codecov](https://codecov.io/gh/yourusername/enterprise-valuation-model/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/enterprise-valuation-model)
@@ -7,15 +7,13 @@ A Streamlit-based web application for running enterprise valuation models. This 
 
 ## Features
 
-- Interactive web interface for model configuration
-- Support for multiple product groups
-- S3 integration for input/output files
-- Real-time progress tracking
-- Result visualization
-- Run history logging
-- Settings management
+- Microsoft authentication
+- Supports both SharePoint and S3 storage backends
+- Single and batch model execution
+- MPF data validation
+- Run history tracking
 
-## Prerequisites
+## Setup Instructions
 
 - Python 3.8 or higher
 - AWS account with S3 access
@@ -26,70 +24,56 @@ A Streamlit-based web application for running enterprise valuation models. This 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/enterprise-valuation-model.git
-cd enterprise-valuation-model
+git clone https://github.com/Zhangcj330/valuation-model-UI.git
+cd valuation-model-UI
 ```
 2. Create and activate a virtual environment:
 
 Windows
+```
 python -m venv venv
 .\venv\Scripts\activate
-
+```
 
 Linux/Mac
+```
 python3 -m venv venv
 source venv/bin/activate
-
+```
 3. Install required packages:
 ```
 pip install -r requirements.txt
 ```
 
-## Configuration
+### 3. Configure environment variables
 
-1. Set up AWS credentials:
-   - Create a `.env` file in the project root:
-   ```
-   AWS_ACCESS_KEY_ID=your_access_key
-   AWS_SECRET_ACCESS_KEY=your_secret_key
-   AWS_DEFAULT_REGION=your_region
-   ```
+Create a `.env.local` file in the root directory with the following credentials:
 
-   Or configure AWS CLI:
-   ```bash
-   aws configure
-   ```
+```
+# Microsoft Authentication
+CLIENT_ID=your_microsoft_app_client_id
+CLIENT_SECRET=your_microsoft_app_client_secret
+TENANT_ID=your_tenant_id
 
-2. Prepare your S3 buckets:
-   - Create buckets for:
-     - Assumption tables
-     - Model point files
-     - Model files
-     - Output results
+# AWS S3 Configuration (if using S3 storage)
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=your_aws_region
+```
 
-## File Structure Requirements
+#### Configuration Reference
 
-1. Assumption Table Excel file should contain the following sheets:
-   - lapse
-   - CPI
-   - prem expenses
-   - fixed expenses
-   - commissions
-   - discount curve
-   - mortality
-   - trauma
-   - TPD
-   - prem_rate_level
-   - prem_rate_stepped
-   - RA
-   - RI_prem_rate_level
-   - RI_prem_rate_stepped
+- `CLIENT_ID`: Microsoft Azure application client ID
+- `CLIENT_SECRET`: Microsoft Azure application client secret
+- `TENANT_ID`: Microsoft tenant ID for your organization
 
-2. Model point files should be Excel files named according to product groups
 
-## Running the Application
+- `AWS_ACCESS_KEY_ID`: AWS access key with permissions to S3
+- `AWS_SECRET_ACCESS_KEY`: AWS secret access key
+- `AWS_REGION`: AWS region (e.g., us-east-1)
 
-1. Start the Streamlit server:
+### 4. Run the application
+
 ```bash
 streamlit run app.py
 ```
@@ -119,17 +103,3 @@ streamlit run app.py
 3. Manage Settings:
    - Save current settings for future use
    - Load previously saved settings
-
-
-### Project Structure
-```
-enterprise-valuation-model/
-├── app.py                 # Main Streamlit application
-├── model_utils.py         # Model processing utilities
-├── settings_utils.py      # Settings management
-├── s3_utils.py           # S3 interaction utilities
-├── log.py                # Logging functionality
-├── tests/                # Test files
-├── requirements.txt      # Package dependencies
-└── README.md            # This file
-```
